@@ -5,6 +5,7 @@ from torch.utils.data import Dataset, DataLoader
 import albumentations as A
 import cv2
 import matplotlib.pyplot as plt
+from sklearn.model_selection import train_test_split
 
 
 class RealDAE(Dataset):
@@ -14,7 +15,7 @@ class RealDAE(Dataset):
     or any application requiring input (in) and ground truth (gt) images.
 
     The dataset expects the directory to be organized such that files corresponding to the
-    'train' or 'test' split are stored in appropriate subdirectories, with images following
+    'train' or 'val' split are stored in appropriate subdirectories, with images following
     a naming convention that ends with 'in.jpg' for input images and 'gt.jpg' for ground truth images.
 
     Attributes:
@@ -32,7 +33,7 @@ class RealDAE(Dataset):
     ds_dir : str
         The root directory containing the dataset.
     split : str
-        The dataset split to load ('train' or 'test').
+        The dataset split to load ('train' or 'val').
     transform : callable, optional
         An optional transformation function to apply to both input and ground truth images.
     """
@@ -45,16 +46,27 @@ class RealDAE(Dataset):
             raise ValueError("split must be either 'train' or 'val'")
 
         for root, _, filenames in os.walk(ds_dir):
-            if split in os.path.basename(root) or split in root:
-                for filename in filenames:
-                    if re.match(r".*in.jpg", filename):
-                        in_paths.append(os.path.join(root, filename))
-                    elif re.match(r".*gt.jpg", filename):
-                        gt_paths.append(os.path.join(root, filename))
+            for filename in filenames:
+                if re.match(r".*in.jpg", filename):
+                    in_paths.append(os.path.join(root, filename))
+                elif re.match(r".*gt.jpg", filename):
+                    gt_paths.append(os.path.join(root, filename))
 
         self.config = config
         self.in_paths = sorted(in_paths)
         self.gt_paths = sorted(gt_paths)
+
+        # Split the dataset into train and val
+        train_in_paths, val_in_paths, train_gt_paths, val_gt_paths = train_test_split(
+            self.in_paths, self.gt_paths, test_size=0.2, random_state=42
+        )
+
+        if split == "train":
+            self.in_paths = train_in_paths
+            self.gt_paths = train_gt_paths
+        elif split == "val":
+            self.in_paths = val_in_paths
+            self.gt_paths = val_gt_paths
 
         if not transform:
             if split == "train":
@@ -70,17 +82,15 @@ class RealDAE(Dataset):
                 A.RandomRotate90(),
                 A.HorizontalFlip(),
                 A.VerticalFlip(),
-                A.Resize(self.config["input_h"], self.config["input_w"]),
-                A.transforms.Normalize(),
+                A.Resize(
+                    self.config["data"]["input_h"], self.config["data"]["input_w"]
+                ),
             ]
         )
 
     def __get_val_trans__(self):
         return A.Compose(
-            [
-                A.Resize(self.config["input_h"], self.config["input_w"]),
-                A.transforms.Normalize(),
-            ]
+            [A.Resize(self.config["data"]["input_h"], self.config["data"]["input_w"])]
         )
 
     def __len__(self):
@@ -98,9 +108,9 @@ class RealDAE(Dataset):
             in_img = augmented["image"]
             gt_img = augmented["mask"]
 
-        # in_img = in_img.astype("float32") / 255.0
+        in_img = in_img.astype("float32") / 255.0
         in_img = in_img.transpose(2, 0, 1)
-        # gt_img = gt_img.astype("float32") / 255.0
+        gt_img = gt_img.astype("float32") / 255.0
         gt_img = gt_img.transpose(2, 0, 1)
 
         return in_img, gt_img
@@ -116,7 +126,9 @@ if __name__ == "__main__":
     split = "train"
 
     dataset = RealDAE(ds_dir=ds_dir, split=split, config=config)
-    dataloader = DataLoader(dataset, batch_size=4, shuffle=True)
+    dataloader = DataLoader(dataset, batch_size=4, shuffle=False)
+
+    print(len(dataloader))
 
     def visualize_samples(batch):
         inputs, gts = batch
@@ -142,5 +154,6 @@ if __name__ == "__main__":
     # Get a batch of samples and visualize
     for batch in dataloader:
         print(batch[0])
+        print(batch[1])
         visualize_samples(batch)
         break  # Only visualize one batch

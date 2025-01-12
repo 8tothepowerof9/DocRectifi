@@ -1,0 +1,21 @@
+{
+    "data": {
+        "batch_size": 4,
+        "num_workers": 6, 
+        "input_h": 512, 
+        "input_w": 512
+    }, 
+    "training": {
+        "epochs": 10,
+        "lr": 0.001,
+        "save": true
+    }, 
+    "model": {
+        "type": "unet",
+        "name": "unet",
+        "features": 64
+    }, 
+    "eval": {
+        "save": true
+    }
+}
