@@ -8,13 +8,15 @@
     "training": {
         "epochs": 10,
         "lr": 0.001,
-        "save": true
+        "save": true,
+        "loss": "l1"
     }, 
     "model": {
         "type": "baseline",
         "name": "baseline"
     }, 
     "eval": {
-        "save": true
+        "save": true, 
+        "eval_loader": "val"
     }
 }

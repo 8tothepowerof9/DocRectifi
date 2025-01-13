@@ -220,6 +220,7 @@ if __name__ == "__main__":
         ),
     }
 
+    # Model
     if config["model"]["type"] == "baseline":
         model = Baseline(cfg=config).to(device)
     elif config["model"]["type"] == "unet":
@@ -227,13 +228,19 @@ if __name__ == "__main__":
     else:
         raise ValueError("Model type not supported")
 
+    # Loss fn
+    if config["training"]["loss"] == "l1":
+        loss_fn = nn.L1Loss()
+    elif config["training"]["loss"] == "gcdr_loss":
+        pass
+
     trainer = Trainer(
         dataloaders=dataloaders,
         model=model,
         loss_fn=nn.L1Loss(),
         optimizer=optim.Adam(model.parameters(), lr=config["training"]["lr"]),
         device=device,
-        save=False,
+        save=config["training"]["save"],
     )
 
     trainer.fit(config["training"]["epochs"])
@@ -243,8 +250,6 @@ if __name__ == "__main__":
     with torch.no_grad():
         in_img, gt_img = next(iter(dataloaders["val"]))
         pred_img = model(in_img.to(device))
-
-        print(pred_img)
 
         fig, ax = plt.subplots(1, 3, figsize=(15, 5))
         ax[0].imshow(in_img[0].permute(1, 2, 0).cpu().numpy())

@@ -7,15 +7,17 @@
     }, 
     "training": {
         "epochs": 10,
-        "lr": 0.001,
-        "save": true
+        "lr": 0.005,
+        "save": true,
+        "loss": "l1"
     }, 
     "model": {
         "type": "unet",
         "name": "unet",
-        "features": 64
+        "features": 16
     }, 
     "eval": {
-        "save": true
+        "save": true, 
+        "eval_loader": "val"
     }
 }
