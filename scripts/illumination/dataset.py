@@ -160,11 +160,10 @@ if __name__ == "__main__":
 
         for i in range(len(inputs)):
             # Compute shadowmap by dividing input by ground truth
-            epsilon = 1e-8
-            shadow_map = inputs[i] / (gts[i] + epsilon)
+            shadow_map = inputs[i] / gts[i]
+            # Don't clamp shadow map
 
-            # Concat input and shadow map
-            i_gc = torch.cat([inputs[i], shadow_map], dim=0)
+            i_gc = torch.clamp(inputs[i] / shadow_map, 0, 1)
 
             # Convert back to HWC format for visualization
             i_gc = i_gc.permute(1, 2, 0).numpy()
@@ -185,7 +184,7 @@ if __name__ == "__main__":
             axes[i, 2].axis("off")
 
             axes[i, 3].imshow(i_gc)
-            axes[i, 3].set_title("Input + Shadow Map")
+            axes[i, 3].set_title("Enhanced map")
             axes[i, 3].axis("off")
 
         plt.tight_layout()
