@@ -1,6 +1,7 @@
 # Different train, eval functions for GC-Net, and joint training of GC-Net and DR-Net
 # Use the train function for GC-Net as the general training function for baseline
 
+import os
 import time
 import sys
 import torch
@@ -14,7 +15,9 @@ from torchmetrics.image import (
 )
 from scripts.illumination.utils import EarlyStopping, read_cfg
 import pandas as pd
-import matplotlib.pyplot as plt
+
+
+os.environ["ALBUMENTATIONS_DISABLE_VERSION_CHECK"] = "1"  # Disable version check
 
 
 class Trainer:
@@ -90,12 +93,12 @@ class Trainer:
                 loss, current = loss.item(), batch * len(in_img)
                 print(f"loss: {loss:>7f}  [{current:>5d}/{size:>5d}]")
 
-        if self.scheduler:
-            self.scheduler.step()
-
         avg_loss = total_loss / num_batches
         ms_ssim_score = ms_ssim.compute().item()
         psnr_score = psnr.compute().item()
+
+        # Get current learning rate
+        lr = self.optimizer.param_groups[0]["lr"]
 
         # Save metrics
         self.log["loss"].append(avg_loss)
@@ -105,7 +108,7 @@ class Trainer:
         end = time.time()
 
         print(
-            f"Train Summary [{end-start:.3f}s]: \n Avg Loss: {avg_loss:.4f} | MS-SSIM: {ms_ssim_score:.4f} | PSNR: {psnr_score:.4f}"
+            f"Train Summary [{end-start:.3f}s]: \n Avg Loss: {avg_loss:.4f} | MS-SSIM: {ms_ssim_score:.4f} | PSNR: {psnr_score:.4f} | LR: {lr}"
         )
 
     def __std_eval__(self):
@@ -166,19 +169,24 @@ class Trainer:
                 self.__gcdr_train__()
                 self.__gcdr_eval__()
 
-            if early_stopper.early_stop(self.log["val_loss"][-1], self.model):
+            if self.scheduler:
+                self.scheduler.step()
+
+            if early_stopper.early_stop(
+                self.log["val_loss"][-1], self.model, epoch + 1
+            ):
                 print("Early Stopped!")
                 break
 
         if self.save:
             torch.save(
                 early_stopper.best_model_state,
-                "models/checkpoints/" + self.model.name + ".pt",
+                "models/illumination/checkpoints/" + self.model.name + ".pt",
             )
-            print("----Best model saved!----")
+            print(f"----Best model from {early_stopper.best_model_epoch} saved!----")
 
             pd.DataFrame(self.log).to_csv(
-                f"results/logs/{self.model.name}.csv", index=False
+                f"results/logs/illumination/{self.model.name}.csv", index=False
             )
             print("Logs saved!")
 
@@ -190,8 +198,6 @@ class Trainer:
 if __name__ == "__main__":
     cfg_file = sys.argv[1]
     config = read_cfg(cfg_file)
-
-    # Temporary
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -223,8 +229,8 @@ if __name__ == "__main__":
     # Model
     if config["model"]["type"] == "baseline":
         model = Baseline(cfg=config).to(device)
-    elif config["model"]["type"] == "unet":
-        model = UNet(cfg=config).to(device)
+    elif config["model"]["type"] == "unext":
+        model = UNext(cfg=config).to(device)
     else:
         raise ValueError("Model type not supported")
 
@@ -234,31 +240,16 @@ if __name__ == "__main__":
     elif config["training"]["loss"] == "gcdr_loss":
         pass
 
+    optimizer = optim.Adam(model.parameters(), lr=config["training"]["lr"])
+
     trainer = Trainer(
         dataloaders=dataloaders,
         model=model,
         loss_fn=nn.L1Loss(),
-        optimizer=optim.Adam(model.parameters(), lr=config["training"]["lr"]),
+        optimizer=optimizer,
         device=device,
+        scheduler=optim.lr_scheduler.StepLR(optimizer, step_size=7, gamma=0.5),
         save=config["training"]["save"],
     )
 
-    trainer.fit(config["training"]["epochs"])
-
-    # Plot out a sample of the prediction
-    model.eval()
-    with torch.no_grad():
-        in_img, gt_img = next(iter(dataloaders["val"]))
-        pred_img = model(in_img.to(device))
-
-        fig, ax = plt.subplots(1, 3, figsize=(15, 5))
-        ax[0].imshow(in_img[0].permute(1, 2, 0).cpu().numpy())
-        ax[0].set_title("Input Image")
-
-        ax[1].imshow(gt_img[0].permute(1, 2, 0).cpu().numpy())
-        ax[1].set_title("Ground Truth")
-
-        ax[2].imshow(pred_img[0].permute(1, 2, 0).cpu().numpy())
-        ax[2].set_title("Predicted Image")
-
-        plt.show()
+    _ = trainer.fit(config["training"]["epochs"])

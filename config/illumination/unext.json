@@ -12,8 +12,12 @@
         "loss": "l1"
     }, 
     "model": {
-        "type": "baseline",
-        "name": "baseline"
+        "type": "unext",
+        "name": "unext",
+        "embed_dims": [128, 160, 256],
+        "drop_rate": 0.0,
+        "drop_path_rate": 0.0,
+        "depths": [1, 1, 1]
     }, 
     "eval": {
         "save": true, 
