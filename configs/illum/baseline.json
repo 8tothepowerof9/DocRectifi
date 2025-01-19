@@ -6,7 +6,7 @@
     "train": {
         "epochs": 20,
         "lr": 0.001,
-        "save": false,
+        "save": true,
         "trainer": "standard"
     }, 
     "model": {
@@ -14,8 +14,7 @@
         "name": "baseline"
     }, 
     "eval": {
-        "save": false, 
-        "eval_loader": "val", 
+        "save": true, 
         "vis_preds": true,
         "plot_history": true
     }

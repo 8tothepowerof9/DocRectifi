@@ -200,10 +200,7 @@ class UNext(BaseModel):
 
     ## Conv 3 + MLP 2 + shifted MLP
 
-    def __init__(
-        self,
-        cfg,
-    ):
+    def __init__(self, cfg):
         super().__init__()
 
         self.name = cfg["model"]["name"]
@@ -303,7 +300,6 @@ class UNext(BaseModel):
         self.sigmoid = nn.Sigmoid()
 
     def forward(self, x):
-
         B = x.shape[0]
         ### Encoder
         ### Conv Stage
@@ -388,4 +384,4 @@ class UNext(BaseModel):
         return self.sigmoid(self.final(out))
 
     def __str__(self):
-        return summary(self, input_size=(1, 3, 512, 512))
+        return str(summary(self, input_size=(1, 3, 512, 512)))

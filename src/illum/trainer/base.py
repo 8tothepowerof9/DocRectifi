@@ -10,10 +10,11 @@ class BaseTrainer(ABC):
     Base class for all trainers
     """
 
-    def __init__(self, model, loss_fn, optimizer, scheduler=None, save=True):
+    def __init__(self, model, loss_fn, optimizer, epochs, scheduler=None, save=True):
         self.model = model
         self.loss_fn = loss_fn
         self.optimizer = optimizer
+        self.epochs = epochs
         self.scheduler = scheduler
         self.save = save
         self.metrics = {
@@ -39,5 +40,5 @@ class BaseTrainer(ABC):
         pass
 
     @abstractmethod
-    def fit(self, train_loader, val_loader, epochs):
+    def fit(self, train_loader, val_loader):
         pass

@@ -17,8 +17,6 @@ if __name__ == "__main__":
     cfg_file = sys.argv[1]
     config = read_cfg(cfg_file)
 
-    device = "cuda"
-
     train_ds = RealDAE(split="train")
     train_loader = DataLoader(
         train_ds,
@@ -48,8 +46,10 @@ if __name__ == "__main__":
         model=model,
         loss_fn=nn.L1Loss(),
         optimizer=optimizer,
-        scheduler=optim.lr_scheduler.StepLR(optimizer, step_size=7, gamma=0.5),
+        epochs=config["train"]["epochs"],
+        scheduler=optim.lr_scheduler.StepLR(optimizer, step_size=6, gamma=0.5),
         save=config["train"]["save"],
     )
 
-    trainer.fit(train_loader, val_loader, config["train"]["epochs"])
+    trainer.fit(train_loader, val_loader)
+    # print(model)

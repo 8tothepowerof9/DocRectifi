@@ -6,8 +6,8 @@ from ..utils import EarlyStopping
 
 
 class StandardTrainer(BaseTrainer):
-    def __init__(self, model, loss_fn, optimizer, scheduler=None, save=True):
-        super().__init__(model, loss_fn, optimizer, scheduler, save)
+    def __init__(self, model, loss_fn, optimizer, epochs, scheduler=None, save=True):
+        super().__init__(model, loss_fn, optimizer, epochs, scheduler, save)
 
     def _train_epoch(self, dataloader):
         start = time.time()
@@ -95,7 +95,6 @@ class StandardTrainer(BaseTrainer):
         self.log["val_loss"].append(avg_loss)
         self.log["val_PSNR"].append(psnr_score)
         self.log["val_MS_SSIM"].append(ms_ssim_score)
-        self.log["lr"].append(lr)
 
         end = time.time()
 
@@ -103,10 +102,10 @@ class StandardTrainer(BaseTrainer):
             f"Validation Summary [{end-start:.3f}s]: \n Avg Loss: {avg_loss:.4f} | MS-SSIM: {ms_ssim_score:.4f} | PSNR: {psnr_score:.4f} | lr: {lr}"
         )
 
-    def fit(self, train_loader, val_loader, epochs):
+    def fit(self, train_loader, val_loader):
         early_stopper = EarlyStopping(patience=3, min_delta=0.001)
 
-        for epoch in range(epochs):
+        for epoch in range(self.epochs):
             print(f"Epoch {epoch+1}\n-------------------------------")
             self._train_epoch(train_loader)
             self._eval_epoch(val_loader)

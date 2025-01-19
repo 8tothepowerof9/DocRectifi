@@ -1,2 +1,2 @@
 from .unext import UNext
-from .gcdr import GCDRNet
+from .gcdr import DRNett, GCNet
