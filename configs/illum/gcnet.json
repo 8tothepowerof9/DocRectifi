@@ -1,0 +1,42 @@
+{
+    "data": {
+        "batch_size": 4,
+        "num_workers": 6
+    }, 
+    "train": {
+        "trainer": "gcdr",
+        "gc": {
+            "epochs": 50,
+            "lr": 0.001,
+            "save": true
+        },
+        "dr": {
+            "epochs": 20,
+            "lr": 0.001,
+            "save": false
+        }
+    }, 
+    "model": {
+        "type": "gcdr",
+        "gc": {
+            "name": "gcnet",
+            "embed_dims": [128, 160, 256],
+            "drop_rate": 0.0,
+            "drop_path_rate": 0.0,
+            "depths": [1, 1, 1]
+        },
+        "dr": {
+            "pretrained_gc": false,
+            "name": "drnet",
+            "embed_dims": [128, 256, 512],
+            "drop_rate": 0.0,
+            "drop_path_rate": 0.0,
+            "depths": [1, 1, 1]
+        }
+    }, 
+    "eval": {
+        "save": false, 
+        "vis_preds": true,
+        "plot_history": true
+    }
+}

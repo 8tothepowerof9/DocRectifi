@@ -44,7 +44,6 @@ if __name__ == "__main__":
 
     trainer = TRAINER_LIST[config["train"]["trainer"]](
         model=model,
-        loss_fn=nn.L1Loss(),
         optimizer=optimizer,
         epochs=config["train"]["epochs"],
         scheduler=optim.lr_scheduler.StepLR(optimizer, step_size=6, gamma=0.5),

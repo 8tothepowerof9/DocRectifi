@@ -18,3 +18,7 @@ class EarlyStopping:
             if self.counter >= self.patience:
                 return True
         return False
+
+
+def seconds_to_minutes_str(seconds):
+    return f"{seconds//60}m {(seconds%60):3f}s"

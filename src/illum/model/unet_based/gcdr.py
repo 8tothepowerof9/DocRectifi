@@ -22,11 +22,11 @@ class GCNet(BaseModel):
     def __init__(self, cfg):
         super().__init__()
 
-        self.name = "GCNet"
-        drop_rate = cfg["model"]["drop_rate"]
-        drop_path_rate = cfg["model"]["drop_path_rate"]
-        depths = cfg["model"]["depths"]
-        embed_dims = cfg["model"]["embed_dims"]
+        self.name = cfg["model"]["gc"]["name"]
+        drop_rate = cfg["model"]["gc"]["drop_rate"]
+        drop_path_rate = cfg["model"]["gc"]["drop_path_rate"]
+        depths = cfg["model"]["gc"]["depths"]
+        embed_dims = cfg["model"]["gc"]["embed_dims"]
 
         self.encoder1 = nn.Sequential(
             nn.ReflectionPad2d(1), nn.Conv2d(3, 16, 3, stride=1, padding=0)
@@ -221,19 +221,20 @@ class GCNet(BaseModel):
         return self.sigmoid(out)
 
     def __str__(self):
-        return str(summary(self, input_size=(1, 3, IMG_H, IMG_W)))
+        return str(summary(self, input_size=(1, 3, IMG_H, IMG_W), verbose=0))
 
 
-# TODO: Add GCNet before DRNet
+# TODO: Train GCNet first then co-train with DR-Net
+# Add the GCNet into DRNet
 class DRNet(BaseModel):
     def __init__(self, cfg):
         super().__init__()
 
-        self.name = cfg["model"]["name"]
-        drop_rate = cfg["model"]["drop_rate"]
-        drop_path_rate = cfg["model"]["drop_path_rate"]
-        depths = cfg["model"]["depths"]
-        embed_dims = cfg["model"]["embed_dims"]
+        self.name = cfg["model"]["dr"]["name"]
+        drop_rate = cfg["model"]["dr"]["drop_rate"]
+        drop_path_rate = cfg["model"]["dr"]["drop_path_rate"]
+        depths = cfg["model"]["dr"]["depths"]
+        embed_dims = cfg["model"]["dr"]["embed_dims"]
 
         self.encoder1 = nn.Sequential(
             nn.ReflectionPad2d(1), nn.Conv2d(3, 32, 3, stride=1, padding=0)
@@ -457,4 +458,4 @@ class DRNet(BaseModel):
         return self.sigmoid(self.final(out)), out2, out4, out8
 
     def __str__(self):
-        return str(summary(self, input_size=(1, 3, IMG_H, IMG_W)))
+        return str(summary(self, input_size=(1, 3, IMG_H, IMG_W), verbose=0))

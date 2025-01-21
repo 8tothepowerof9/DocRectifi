@@ -42,4 +42,4 @@ class Baseline(BaseModel):
         return self.se(x)
 
     def __str__(self):
-        return str(summary(self, input_size=(1, 3, 512, 512)))
+        return str(summary(self, input_size=(1, 3, 512, 512), verbose=0))

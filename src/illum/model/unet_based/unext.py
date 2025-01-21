@@ -384,4 +384,4 @@ class UNext(BaseModel):
         return self.sigmoid(self.final(out))
 
     def __str__(self):
-        return str(summary(self, input_size=(1, 3, 512, 512)))
+        return str(summary(self, input_size=(1, 3, 512, 512), verbose=0))

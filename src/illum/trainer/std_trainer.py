@@ -1,13 +1,15 @@
 import time
 import torch
+from torch import nn
 import pandas as pd
 from .base import BaseTrainer
-from ..utils import EarlyStopping
+from ..utils import EarlyStopping, seconds_to_minutes_str
 
 
 class StandardTrainer(BaseTrainer):
-    def __init__(self, model, loss_fn, optimizer, epochs, scheduler=None, save=True):
-        super().__init__(model, loss_fn, optimizer, epochs, scheduler, save)
+    def __init__(self, model, optimizer, epochs, scheduler=None, save=True):
+        super().__init__(model, optimizer, epochs, scheduler, save)
+        self.loss_fn = nn.L1Loss()
 
     def _train_epoch(self, dataloader):
         start = time.time()
@@ -61,6 +63,8 @@ class StandardTrainer(BaseTrainer):
             f"Train Summary [{end-start:.3f}s]: \n Avg Loss: {avg_loss:.4f} | MS-SSIM: {ms_ssim_score:.4f} | PSNR: {psnr_score:.4f} | lr: {lr}"
         )
 
+        return end - start
+
     def _eval_epoch(self, dataloader):
         start = time.time()
         num_batches = len(dataloader)
@@ -102,13 +106,25 @@ class StandardTrainer(BaseTrainer):
             f"Validation Summary [{end-start:.3f}s]: \n Avg Loss: {avg_loss:.4f} | MS-SSIM: {ms_ssim_score:.4f} | PSNR: {psnr_score:.4f} | lr: {lr}"
         )
 
+        return end - start
+
     def fit(self, train_loader, val_loader):
+        print("-----Start Training!-----")
         early_stopper = EarlyStopping(patience=3, min_delta=0.001)
 
         for epoch in range(self.epochs):
             print(f"Epoch {epoch+1}\n-------------------------------")
-            self._train_epoch(train_loader)
-            self._eval_epoch(val_loader)
+            train_time = self._train_epoch(train_loader)
+            val_time = self._eval_epoch(val_loader)
+
+            if epoch > 0:
+                print(
+                    "\n[Approximate time remaining]: ",
+                    seconds_to_minutes_str(
+                        (train_time + val_time) * (self.epochs - epoch - 1)
+                    ),
+                    "\n",
+                )
 
             if self.scheduler:
                 self.scheduler.step()
