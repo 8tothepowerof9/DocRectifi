@@ -187,12 +187,19 @@ class GCTrainer(BaseTrainer):
 # GCDRTrainer will attempt to load a GCNet from checkpoints
 # If exists then it will check if a DRNet checkpoint exists
 # If exists, it will load the weights and continue training the model, if not it will train from scratch
+# When saving, don't overwrite the original GCNet checkpoint
 class GCDRTrainer(BaseTrainer):
     def __init__(self, model, config):
         # Though the trainer is called GCDRTrainer, the model is a DRNet
         super().__init__(model, config)
 
-        # Different from GCTrainer, GCDRTrainer uses multiple different losses. TODO:
+        # Different from GCTrainer, GCDRTrainer uses multiple different losses. TODO: Need to finish
+        self.l8 = nn.L1Loss()
+        # l2 and l4 has the same loss function: SSIM loss + L1 loss
+        self.l4 = nn.L1Loss()
+        self.l2 = nn.L1Loss()
+        # l1 uses L1 loss + SSIM loss + Total Variation loss
+        self.l1 = nn.L1Loss()
 
         # Attempt to load GCNet
         self.load_gcnet()
