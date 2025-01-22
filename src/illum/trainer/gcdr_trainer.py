@@ -1,16 +1,33 @@
 import time
 import torch
-from torch import nn
+from torch import nn, optim
+import os
 import pandas as pd
 from .base import BaseTrainer
 from ..utils import EarlyStopping, seconds_to_minutes_str
+from ..config import CHECKPOINTS_PATH
+from ..model import GCNet
 
 
-# GCNet traine is similar to the StandardTrainer, but it uses the shadow map as the ground truth
+# GCNet trainer is similar to the StandardTrainer, but it uses the shadow map as the ground truth
+# TODO: Finish GCDRTrainer and custom load_checkpoint
 class GCTrainer(BaseTrainer):
-    def __init__(self, model, optimizer, epochs, scheduler=None, save=True):
-        super().__init__(model, optimizer, epochs, scheduler, save)
+    def __init__(self, model, config):
+        super().__init__(model, config)
         self.loss_fn = nn.L1Loss()
+        self.optimizer = optim.Adam(
+            model.parameters(),
+            lr=config["train"]["lr"],
+            betas=tuple(config["train"]["betas"]),
+        )
+        self.epochs = self.config["train"]["epochs"]
+        self.save = self.config["train"]["save"]
+        self.scheduler = optim.lr_scheduler.StepLR(
+            self.optimizer,
+            step_size=config["train"]["scheduler"]["step_size"],
+            gamma=config["train"]["scheduler"]["gamma"],
+        )
+        self.checkpoint_exists = self.load_checkpoint()
 
     def _train_epoch(self, dataloader):
         start = time.time()
@@ -117,11 +134,14 @@ class GCTrainer(BaseTrainer):
         return end - start
 
     def fit(self, train_loader, val_loader, min_lr=1e-6):
+        if self.checkpoint_exists:
+            print("----> Checkpoint found and loaded! <-----")
+
         print("-----Start Training!-----")
         early_stopper = EarlyStopping(patience=5, min_delta=0.01)
 
         for epoch in range(self.epochs):
-            print(f"Epoch {epoch+1}\n-------------------------------")
+            print(f"Epoch {len(self.log)+1}\n-------------------------------")
             train_time = self._train_epoch(train_loader)
             val_time = self._eval_epoch(val_loader)
 
@@ -163,5 +183,45 @@ class GCTrainer(BaseTrainer):
         print("-----Done Training!-----")
 
 
+# First, a GCNet checkpoint is needed to train GCDRNet
+# GCDRTrainer will attempt to load a GCNet from checkpoints
+# If exists then it will check if a DRNet checkpoint exists
+# If exists, it will load the weights and continue training the model, if not it will train from scratch
 class GCDRTrainer(BaseTrainer):
-    pass
+    def __init__(self, model, config):
+        # Though the trainer is called GCDRTrainer, the model is a DRNet
+        super().__init__(model, config)
+
+        # Different from GCTrainer, GCDRTrainer uses multiple different losses. TODO:
+
+        # Attempt to load GCNet
+        self.load_gcnet()
+        self.dr_checkpoint_exists = self.load_checkpoint()
+
+        self.optimizer = optim.Adam(
+            model.parameters(),
+            lr=config["train"]["lr"],
+            betas=tuple(config["train"]["betas"]),
+        )
+
+        self.epochs = self.config["train"]["epochs"]
+        self.save = self.config["train"]["save"]
+        self.scheduler = optim.lr_scheduler.StepLR(
+            self.optimizer,
+            step_size=config["train"]["scheduler"]["step_size"],
+            gamma=config["train"]["scheduler"]["gamma"],
+        )
+
+    def load_gcnet(self):
+        self.gcnet = GCNet(self.config).to("cuda")
+        path = f"{CHECKPOINTS_PATH}/{self.config["gc"]["name"]}.pt"
+        self.gcnet.load_state_dict(torch.load(path, weights_only=True))
+
+    def _train_epoch(self, dataloader):
+        pass
+
+    def _eval_epoch(self, dataloader):
+        pass
+
+    def fit(self, train_loader, val_loader):
+        pass

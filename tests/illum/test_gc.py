@@ -34,7 +34,8 @@ def vis_preds(model, dataloader):
 
     with torch.no_grad():
         for inputs, gts in dataloader:
-            num_images = len(inputs)
+            # num_images = len(inputs)
+            num_images = 2
             fig, axes = plt.subplots(num_images, 4, figsize=(15, 5 * num_images))
 
             # Ensure axes is a 2D array even if num_images == 1
@@ -42,14 +43,16 @@ def vis_preds(model, dataloader):
                 axes = axes.reshape(1, -1)
 
             for i in range(num_images):
-                pred_shadowmap = model(inputs[i].to("cuda"))
-                i_gc = torch.clamp(inputs[i] / pred_shadowmap, 0, 1)
+                pred_shadowmap = model(inputs[i].unsqueeze(0).to("cuda"))
+                i_gc = torch.clamp(
+                    inputs[i].unsqueeze(0).to("cuda") / pred_shadowmap, 0, 1
+                )
 
                 # Convert back to HWC format for visualization
                 inp_img = inputs[i].permute(1, 2, 0).numpy()
                 gt_img = gts[i].permute(1, 2, 0).numpy()
-                pred_shadowmap = pred_shadowmap.permute(1, 2, 0).cpu().numpy()
-                i_gc = i_gc.permute(1, 2, 0).cpu().numpy()
+                pred_shadowmap = pred_shadowmap.squeeze().permute(1, 2, 0).cpu().numpy()
+                i_gc = i_gc.squeeze().permute(1, 2, 0).cpu().numpy()
 
                 # Input Image
                 axes[i, 0].imshow(inp_img)
@@ -99,19 +102,16 @@ if __name__ == "__main__":
 
     # Get model
     model = GCNet(config).to("cuda")
-
-    optimizer = torch.optim.Adam(model.parameters(), lr=config["train"]["gc"]["lr"])
+    # Load with weights
+    # model.load_state_dict(torch.load("checkpoints/illum/gcnet.pt", weights_only=True))
 
     trainer = GCTrainer(
         model=model,
-        optimizer=optimizer,
-        epochs=config["train"]["gc"]["epochs"],
-        scheduler=optim.lr_scheduler.StepLR(optimizer, step_size=5, gamma=0.5),
-        save=config["train"]["gc"]["save"],
+        config=config,
     )
 
     # print(model)
 
     trainer.fit(train_loader, val_loader)
 
-    vis_preds(model, val_loader)
+    # vis_preds(model, train_loader)

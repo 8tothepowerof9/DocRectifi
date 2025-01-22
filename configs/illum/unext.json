@@ -7,7 +7,12 @@
         "epochs": 20,
         "lr": 0.001,
         "save": true,
-        "trainer": "standard"
+        "trainer": "standard",
+        "betas": [0.9, 0.999],
+        "scheduler": {
+            "step_size": 10,
+            "gamma": 0.5
+        }
     }, 
     "model": {
         "type": "unext",

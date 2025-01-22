@@ -455,7 +455,7 @@ class DRNet(BaseModel):
         )
         out = torch.add(out, F.relu(temp))
 
-        return self.sigmoid(self.final(out)), out2, out4, out8
+        return out8, out4, out2, self.sigmoid(self.final(out))
 
     def __str__(self):
         return str(summary(self, input_size=(1, 3, IMG_H, IMG_W), verbose=0))

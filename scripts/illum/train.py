@@ -37,18 +37,13 @@ if __name__ == "__main__":
     # Get model
     model = MODEL_LIST[config["model"]["type"]](config).to("cuda")
 
-    optimizer = torch.optim.Adam(model.parameters(), lr=config["train"]["lr"])
-
     if config["train"]["trainer"] not in TRAINER_LIST.keys():
         raise ValueError("Invalid trainer type")
 
     trainer = TRAINER_LIST[config["train"]["trainer"]](
         model=model,
-        optimizer=optimizer,
-        epochs=config["train"]["epochs"],
-        scheduler=optim.lr_scheduler.StepLR(optimizer, step_size=6, gamma=0.5),
-        save=config["train"]["save"],
+        config=config,
     )
 
-    trainer.fit(train_loader, val_loader)
+    trainer.fit(train_loader, val_loader, min_lr=1e-6)
     # print(model)

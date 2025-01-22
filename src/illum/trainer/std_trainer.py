@@ -1,15 +1,28 @@
 import time
 import torch
-from torch import nn
+from torch import nn, optim
 import pandas as pd
 from .base import BaseTrainer
 from ..utils import EarlyStopping, seconds_to_minutes_str
 
 
 class StandardTrainer(BaseTrainer):
-    def __init__(self, model, optimizer, epochs, scheduler=None, save=True):
-        super().__init__(model, optimizer, epochs, scheduler, save)
+    def __init__(self, model, config):
+        super().__init__(model, config)
         self.loss_fn = nn.L1Loss()
+        self.optimizer = optim.Adam(
+            model.parameters(),
+            lr=config["train"]["lr"],
+            betas=tuple(config["train"]["betas"]),
+        )
+        self.epochs = self.config["train"]["epochs"]
+        self.save = self.config["train"]["save"]
+        self.scheduler = optim.lr_scheduler.StepLR(
+            self.optimizer,
+            step_size=config["train"]["scheduler"]["step_size"],
+            gamma=config["train"]["scheduler"]["gamma"],
+        )
+        self.checkpoint_exists = self.load_checkpoint()
 
     def _train_epoch(self, dataloader):
         start = time.time()
@@ -108,12 +121,15 @@ class StandardTrainer(BaseTrainer):
 
         return end - start
 
-    def fit(self, train_loader, val_loader):
+    def fit(self, train_loader, val_loader, min_lr=1e-6):
+        if self.checkpoint_exists:
+            print("----> Checkpoint found and loaded! <-----")
+
         print("-----Start Training!-----")
         early_stopper = EarlyStopping(patience=3, min_delta=0.001)
 
         for epoch in range(self.epochs):
-            print(f"Epoch {epoch+1}\n-------------------------------")
+            print(f"Epoch {len(self.log)+1}\n-------------------------------")
             train_time = self._train_epoch(train_loader)
             val_time = self._eval_epoch(val_loader)
 
@@ -127,7 +143,12 @@ class StandardTrainer(BaseTrainer):
                 )
 
             if self.scheduler:
-                self.scheduler.step()
+                # Get lr
+                lr = self.optimizer.param_groups[0]["lr"]
+
+                # lr cap
+                if lr > min_lr:
+                    self.scheduler.step()
 
             if early_stopper.early_stop(
                 self.log["val_loss"][-1], self.model, epoch + 1
