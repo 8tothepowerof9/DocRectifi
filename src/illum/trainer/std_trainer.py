@@ -142,13 +142,12 @@ class StandardTrainer(BaseTrainer):
                     "\n",
                 )
 
-            if self.scheduler:
-                # Get lr
-                lr = self.optimizer.param_groups[0]["lr"]
+            # Get lr
+            lr = self.optimizer.param_groups[0]["lr"]
 
-                # lr cap
-                if lr > min_lr:
-                    self.scheduler.step()
+            # lr cap
+            if lr > min_lr:
+                self.scheduler.step()
 
             if early_stopper.early_stop(
                 self.log["val_loss"][-1], self.model, epoch + 1

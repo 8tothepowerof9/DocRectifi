@@ -1,10 +1,9 @@
 import os
 import re
 import torch
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import Dataset
 import albumentations as A
 import cv2
-import matplotlib.pyplot as plt
 from sklearn.model_selection import train_test_split
 from .config import *
 

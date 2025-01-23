@@ -45,7 +45,7 @@ class BaseTrainer(ABC):
         pass
 
     @abstractmethod
-    def fit(self, train_loader, val_loader, min_lr=1e-6):
+    def fit(self, train_loader, val_loader):
         pass
 
     def load_checkpoint(self):
