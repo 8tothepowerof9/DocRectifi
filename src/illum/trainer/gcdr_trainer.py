@@ -45,7 +45,7 @@ class GCTrainer(BaseTrainer):
             self.model.load_state_dict(torch.load(checkpoint_path, weights_only=True))
 
             if os.path.exists(log_path):
-                self.log = pd.read_csv(log_path).to_dict()
+                self.log = pd.read_csv(log_path).to_dict(orient="list")
 
             return True
         else:
@@ -264,7 +264,7 @@ class GCDRTrainer(BaseTrainer):
             self.model.load_state_dict(torch.load(checkpoint_path, weights_only=True))
 
             if os.path.exists(log_path):
-                self.log = pd.read_csv(log_path).to_dict()
+                self.log = pd.read_csv(log_path).to_dict(orient="list")
 
             self.dr_checkpoint_exists = True
         else:
@@ -283,7 +283,7 @@ class GCDRTrainer(BaseTrainer):
             self.gcnet.load_state_dict(torch.load(checkpoint_path, weights_only=True))
 
             if os.path.exists(log_path):
-                self.gc_log = pd.read_csv(log_path).to_dict()
+                self.gc_log = pd.read_csv(log_path).to_dict(orient="list")
 
     def _train_epoch(self, dataloader):
         start = time.time()

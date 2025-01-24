@@ -54,7 +54,7 @@ class BaseTrainer(ABC):
         log_path = f"{LOGS_PATH}/{self.config['model']['name']}.csv"
 
         if os.path.exists(log_path):
-            self.log = pd.read_csv(log_path).to_dict()
+            self.log = pd.read_csv(log_path).to_dict(orient="list")
 
         if os.path.exists(checkpoint_path):
             self.model.load_state_dict(torch.load(checkpoint_path, weights_only=True))

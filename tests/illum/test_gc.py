@@ -103,6 +103,11 @@ if __name__ == "__main__":
     # Get model
     model = GCNet(config).to("cuda")
 
+    # Load from checkpoint
+    checkpoint_path = f"checkpoints/illum/{config["model"]["gc"]["name"]}.pt"
+    checkpoint = torch.load(checkpoint_path, weights_only=True)
+    model.load_state_dict(checkpoint)
+
     trainer = GCTrainer(
         model=model,
         config=config,
@@ -110,6 +115,6 @@ if __name__ == "__main__":
 
     # print(model)
 
-    trainer.fit(train_loader, val_loader)
+    # trainer.fit(train_loader, val_loader)
 
-    # vis_preds(model, train_loader)
+    vis_preds(model, train_loader)
