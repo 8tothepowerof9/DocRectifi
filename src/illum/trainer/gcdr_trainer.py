@@ -2,9 +2,11 @@ import time
 import torch
 from torch import nn, optim
 import torch.nn.functional as F
-from torchmetrics.functional import (
-    total_variation as tv,
-    structural_similarity_index_measure as ssim,
+from torchmetrics.image import (
+    PeakSignalNoiseRatio as PSNR,
+    MultiScaleStructuralSimilarityIndexMeasure as MS_SSIM,
+    StructuralSimilarityIndexMeasure as SSIM,
+    TotalVariation as TV,
 )
 import os
 import pandas as pd
@@ -33,6 +35,21 @@ class GCTrainer(BaseTrainer):
         )
         self.min_lr = config["train"]["scheduler"]["min_lr"]
         self.checkpoint_exists = self.load_checkpoint()
+
+    def load_checkpoint(self):
+        # Find if checkpoint exists, if so, load and return True, else return False
+        checkpoint_path = f"{CHECKPOINTS_PATH}/{self.config['model']['gc']['name']}.pt"
+        log_path = f"{LOGS_PATH}/{self.config['model']['gc']['name']}.csv"
+
+        if os.path.exists(checkpoint_path):
+            self.model.load_state_dict(torch.load(checkpoint_path, weights_only=True))
+
+            if os.path.exists(log_path):
+                self.log = pd.read_csv(log_path).to_dict()
+
+            return True
+        else:
+            return False
 
     def _train_epoch(self, dataloader):
         start = time.time()
@@ -109,7 +126,7 @@ class GCTrainer(BaseTrainer):
         with torch.no_grad():
             for in_img, gt_img in dataloader:
                 in_img, gt_img = in_img.to("cuda"), gt_img.to("cuda")
-                shadow_map = torch.clamp(in_img / (gt_img + 1e-8), 0, 1)
+                shadow_map = torch.clamp(in_img / (gt_img + 1e-6), 0, 1)
 
                 pred = self.model(in_img)
 
@@ -146,7 +163,7 @@ class GCTrainer(BaseTrainer):
         early_stopper = EarlyStopping(patience=5, min_delta=0.01)
 
         for epoch in range(self.epochs):
-            print(f"Epoch {len(self.log)+1}\n-------------------------------")
+            print(f"Epoch {epoch+1}\n-------------------------------")
             train_time = self._train_epoch(train_loader)
             val_time = self._eval_epoch(val_loader)
 
@@ -187,32 +204,27 @@ class GCTrainer(BaseTrainer):
         print("-----Done Training!-----")
 
 
-# First, a GCNet checkpoint is needed to train GCDRNet
-# GCDRTrainer will attempt to load a GCNet from checkpoints
-# If exists then it will check if a DRNet checkpoint exists
-# If exists, it will load the weights and continue training the model, if not it will train from scratch
-# When saving, don't overwrite the original GCNet checkpoint
 class GCDRTrainer(BaseTrainer):
     def __init__(self, model, config):
-        # Though the trainer is called GCDRTrainer, the model is a DRNet
+        # The model stored here is DRNet
         super().__init__(model, config)
 
-        # Different from GCTrainer, GCDRTrainer uses multiple different losses.
-        self.lambda_1 = 0.1  # According to the paper
+        # Different lambda values for the loss function
+        self.lambda_1 = 0.1
         self.lambda_2 = 0.002
 
-        # l8 uses l1 loss only
+        # l8 uses L1 loss only
         # l2 and l4 has the same loss function: SSIM loss + L1 loss
         # l1 uses L1 loss + SSIM loss + Total Variation loss
         self.l1_loss = nn.L1Loss()
-        self.ssim_loss = ssim()  # Consider using torchmetrics' implementation
-        self.tv_loss = tv()
+        self.ssim_loss = SSIM().to("cuda")  # For now use the default values
+        self.tv_loss = TV(reduction="mean").to("cuda")  # Maybe use mean instead of sum?
 
         # Attempt to load GCNet
         self.load_gcnet()
-        self.dr_checkpoint_exists = self.load_checkpoint()
+        self.load_checkpoint()
 
-        # Consider 2 separate optimizers
+        # TODO: Consider using 2 different optimizers
         self.optimizer = optim.Adam(
             list(self.model.parameters()) + list(self.gcnet.parameters()),
             lr=config["train"]["lr"],
@@ -227,22 +239,51 @@ class GCDRTrainer(BaseTrainer):
             gamma=config["train"]["scheduler"]["gamma"],
         )
 
-        # Add additional info to log
-        self.log["gc_loss"] = []
-        self.log["dr_loss"] = []
-        self.log["val_gc_loss"] = []
-        self.log["val_dr_loss"] = []
+        # Independent log and metrics for GCNet
+        self.gc_log = {
+            "loss": [],
+            "val_loss": [],
+            "PSNR": [],
+            "MS_SSIM": [],
+            "val_PSNR": [],
+            "val_MS_SSIM": [],
+            "lr": [],
+        }
+
+        self.gc_metrics = {
+            "PSNR": PSNR().to(device="cuda"),
+            "MS_SSIM": MS_SSIM().to(device="cuda"),
+        }
+
+    def load_checkpoint(self):
+        # Find if dr checkpoint exists, if so, load and return True, else return False
+        checkpoint_path = f"{CHECKPOINTS_PATH}/{self.config['model']['dr']['name']}.pt"
+        log_path = f"{LOGS_PATH}/{self.config['model']['dr']['name']}.csv"
+
+        if os.path.exists(checkpoint_path):
+            self.model.load_state_dict(torch.load(checkpoint_path, weights_only=True))
+
+            if os.path.exists(log_path):
+                self.log = pd.read_csv(log_path).to_dict()
+
+            self.dr_checkpoint_exists = True
+        else:
+            self.dr_checkpoint_exists = False
 
     def load_gcnet(self):
         self.gcnet = GCNet(self.config).to("cuda")
-        path = f"{CHECKPOINTS_PATH}/{self.config["gc"]["name"]}.pt"
+        checkpoint_path = f"{CHECKPOINTS_PATH}/{self.config["model"]["gc"]["name"]}.pt"
+        log_path = f"{LOGS_PATH}/{self.config['model']['gc']['name']}.csv"
 
         # Check if path exists
-        if not os.path.exists(path):
+        if not os.path.exists(checkpoint_path):
             print("A GCNet checkpoint is needed to train GCDRNet.")
-            raise FileNotFoundError(f"GCNet checkpoint not found at {path}")
+            raise FileNotFoundError(f"GCNet checkpoint not found at {checkpoint_path}")
         else:
-            self.gcnet.load_state_dict(torch.load(path, weights_only=True))
+            self.gcnet.load_state_dict(torch.load(checkpoint_path, weights_only=True))
+
+            if os.path.exists(log_path):
+                self.gc_log = pd.read_csv(log_path).to_dict()
 
     def _train_epoch(self, dataloader):
         start = time.time()
@@ -252,12 +293,18 @@ class GCDRTrainer(BaseTrainer):
         dr_total_loss = 0
 
         # Metrics
-        psnr = self.metrics["PSNR"]
-        ms_ssim = self.metrics["MS_SSIM"]
-        psnr.reset()
-        ms_ssim.reset()
+        dr_psnr = self.metrics["PSNR"]
+        dr_ms_ssim = self.metrics["MS_SSIM"]
+        dr_psnr.reset()
+        dr_ms_ssim.reset()
+
+        gc_psnr = self.gc_metrics["PSNR"]
+        gc_ms_ssim = self.gc_metrics["MS_SSIM"]
+        gc_psnr.reset()
+        gc_ms_ssim.reset()
 
         self.model.train()
+        self.gcnet.train()
 
         for batch, (in_img, gt_img) in enumerate(dataloader):
             in_img, gt_img = in_img.to("cuda"), gt_img.to("cuda")
@@ -266,21 +313,23 @@ class GCDRTrainer(BaseTrainer):
             self.optimizer.zero_grad()
 
             # Joint training
-            # Train GCNet first
-            shadow_map = torch.clamp(in_img / (gt_img + 1e-8), 0, 1)
+            ## Train GCNet
+            shadow_map = torch.clamp(in_img / (gt_img + 1e-6), 0, 1)
             pred_shadow_map = self.gcnet(in_img)
-            gc_total_loss += self.l1_loss(pred_shadow_map, shadow_map)
-            # Backpropagation for GCNet, retain graph to allow DR-Net training
-            gc_total_loss.backward(retain_graph=True)
+            gc_loss = self.l1_loss(pred_shadow_map, shadow_map)
+            gc_total_loss += gc_loss.item()
 
-            # Gradient of the DR-Net will not propagate back to the GC-Net
+            ### Backpropagation for GCNet, retain graph for DRNet
+            gc_loss.backward(retain_graph=True)
+
+            ### Gradient of the DR-Net will not propagate back to the GC-Net
             pred_shadow_map = pred_shadow_map.detach()
-
             i_gc = torch.clamp(in_img / pred_shadow_map, 0, 1)
             dr_input = torch.cat((in_img, i_gc), dim=1)
 
-            # Train DRNet
+            ## Train DRNet
             out8, out4, out2, out1 = self.model(dr_input)
+            ### Resize gt to match the output sizes
             gt8, gt4, gt2, gt1 = (
                 F.interpolate(
                     gt_img,
@@ -303,7 +352,7 @@ class GCDRTrainer(BaseTrainer):
                 gt_img,
             )
 
-            # Multi-scale losses, for smaller scales, resize them first
+            ### Multi-scale losses
             l8 = self.l1_loss(out8, gt8)
             l4 = self.l1_loss(out4, gt4) + self.lambda_1 * (
                 1 - self.ssim_loss(out4, gt4)
@@ -316,40 +365,55 @@ class GCDRTrainer(BaseTrainer):
                 + self.lambda_1 * (1 - self.ssim_loss(out1, gt1))
                 + self.lambda_2 * self.tv_loss(out1)
             )
-            dr_total_loss += l8 + l4 + l2 + l1
+            dr_loss = l8 + l4 + l2 + l1
+            dr_total_loss += dr_loss.item()
 
-            # Backpropation for DRNet and GCNet
-            dr_total_loss.backward()
+            ### Backpropation for DRNet
+            dr_loss.backward()
             self.optimizer.step()  # Optimizer step after both losses
 
-            # Update metrics
-            ms_ssim(out1, gt1)
-            psnr(out1, gt1)
+            ### Update metrics
+            gc_ms_ssim(pred_shadow_map, shadow_map)
+            gc_psnr(pred_shadow_map, shadow_map)
+            dr_ms_ssim(out1, gt1)
+            dr_psnr(out1, gt1)
 
             # Logging
             if batch % 10 == 0:
-                loss, current = dr_total_loss.item(), batch * len(in_img)
-                print(f"loss: {loss:>7f}  [{current:>5d}/{size:>5d}]")
+                loss, gc_loss, dr_loss, current = (
+                    gc_loss.item() + dr_loss.item(),
+                    gc_loss.item(),
+                    dr_loss.item(),
+                    batch * len(in_img),
+                )
+                print(
+                    f"loss: {loss:>4f} | gc_loss: {gc_loss:>4f} | dr_loss: {dr_loss:>4f} [{current:>5d}/{size:>5d}]"
+                )
 
         lr = self.optimizer.param_groups[0]["lr"]
-        avg_gc_loss = gc_total_loss / num_batches
-        avg_dr_loss = dr_total_loss / num_batches
-        avg_loss = avg_gc_loss + avg_dr_loss
-        ms_ssim_score = ms_ssim.compute().item()
-        psnr_score = psnr.compute().item()
+        gc_avg_loss = gc_total_loss / num_batches
+        dr_avg_loss = dr_total_loss / num_batches
+        gc_ms_ssim_score = gc_ms_ssim.compute().item()
+        gc_psnr_score = gc_psnr.compute().item()
+        dr_ms_ssim_score = dr_ms_ssim.compute().item()
+        dr_psnr_score = dr_psnr.compute().item()
+        avg_loss = gc_avg_loss + dr_avg_loss
 
         # Save to log
-        self.log["gc_loss"].append(avg_gc_loss)
-        self.log["dr_loss"].append(avg_dr_loss)
-        self.log["loss"].append(avg_loss)
-        self.log["PSNR"].append(psnr_score)
-        self.log["MS_SSIM"].append(ms_ssim_score)
+        self.log["loss"].append(dr_avg_loss)
+        self.log["PSNR"].append(dr_psnr_score)
+        self.log["MS_SSIM"].append(dr_ms_ssim_score)
         self.log["lr"].append(lr)
+
+        self.gc_log["loss"].append(gc_avg_loss)
+        self.gc_log["PSNR"].append(gc_psnr_score)
+        self.gc_log["MS_SSIM"].append(gc_ms_ssim_score)
+        self.gc_log["lr"].append(lr)
 
         end = time.time()
 
         print(
-            f"Train Summary [{end-start:.3f}s]: \n Avg GC Loss: {avg_gc_loss:.4f} | Avg DR Loss: {avg_dr_loss:.4f} | MS-SSIM: {ms_ssim_score:.4f} | PSNR: {psnr_score:.4f} | lr: {lr}"
+            f"Train Summary [{end-start:.3f}s]: \n Total Avg Loss: {avg_loss:.4f} | GC Avg Loss: {gc_avg_loss:.4f} | GC MS-SSIM: {gc_ms_ssim_score:.4f} | GC PSNR: {gc_psnr_score:.4f} | DR Avg Loss: {dr_avg_loss:.4f} | DR MS-SSIM: {dr_ms_ssim_score:.4f} | DR PSNR: {dr_psnr_score:.4f} | lr: {lr}"
         )
 
         return end - start
@@ -361,21 +425,28 @@ class GCDRTrainer(BaseTrainer):
         dr_total_loss = 0
 
         # Metrics
-        psnr = self.metrics["PSNR"]
-        ms_ssim = self.metrics["MS_SSIM"]
-        psnr.reset()
-        ms_ssim.reset()
+        dr_psnr = self.metrics["PSNR"]
+        dr_ms_ssim = self.metrics["MS_SSIM"]
+        dr_psnr.reset()
+        dr_ms_ssim.reset()
+
+        gc_psnr = self.gc_metrics["PSNR"]
+        gc_ms_ssim = self.gc_metrics["MS_SSIM"]
+        gc_psnr.reset()
+        gc_ms_ssim.reset()
 
         self.model.eval()
+        self.gcnet.eval()
 
         with torch.no_grad():
             for in_img, gt_img in dataloader:
                 in_img, gt_img = in_img.to("cuda"), gt_img.to("cuda")
 
                 # GCNet
-                shadow_map = torch.clamp(in_img / (gt_img + 1e-8), 0, 1)
+                shadow_map = torch.clamp(in_img / (gt_img + 1e-6), 0, 1)
                 pred_shadow_map = self.gcnet(in_img)
-                gc_total_loss += self.l1_loss(pred_shadow_map, shadow_map)
+                gc_loss = self.l1_loss(pred_shadow_map, shadow_map)
+                gc_total_loss += gc_loss.item()
 
                 i_gc = torch.clamp(in_img / pred_shadow_map, 0, 1)
                 dr_input = torch.cat((in_img, i_gc), dim=1)
@@ -404,7 +475,7 @@ class GCDRTrainer(BaseTrainer):
                     gt_img,
                 )
 
-                # Multi-scale losses
+                ## Multi-scale losses
                 l8 = self.l1_loss(out8, gt8)
                 l4 = self.l1_loss(out4, gt4) + self.lambda_1 * (
                     1 - self.ssim_loss(out4, gt4)
@@ -418,31 +489,37 @@ class GCDRTrainer(BaseTrainer):
                     + self.lambda_2 * self.tv_loss(out1)
                 )
 
-                dr_total_loss += l8 + l4 + l2 + l1
+                dr_loss = l8 + l4 + l2 + l1
+                dr_total_loss += dr_loss.item()
 
                 # Update metrics
-                ms_ssim(out1, gt1)
-                psnr(out1, gt1)
+                gc_ms_ssim(pred_shadow_map, shadow_map)
+                gc_psnr(pred_shadow_map, shadow_map)
+                dr_ms_ssim(out1, gt1)
+                dr_psnr(out1, gt1)
 
-        # Save to log
         lr = self.optimizer.param_groups[0]["lr"]
-        avg_gc_loss = gc_total_loss / num_batches
-        avg_dr_loss = dr_total_loss / num_batches
-        avg_loss = avg_gc_loss + avg_dr_loss
-        ms_ssim_score = ms_ssim.compute().item()
-        psnr_score = psnr.compute().item()
+        gc_avg_loss = gc_total_loss / num_batches
+        dr_avg_loss = dr_total_loss / num_batches
+        gc_ms_ssim_score = gc_ms_ssim.compute().item()
+        gc_psnr_score = gc_psnr.compute().item()
+        dr_ms_ssim_score = dr_ms_ssim.compute().item()
+        dr_psnr_score = dr_psnr.compute().item()
+        avg_loss = gc_avg_loss + dr_avg_loss
 
         # Save to log
-        self.log["val_gc_loss"].append(avg_gc_loss)
-        self.log["val_dr_loss"].append(avg_dr_loss)
-        self.log["val_loss"].append(avg_loss)
-        self.log["val_PSNR"].append(psnr_score)
-        self.log["val_MS_SSIM"].append(ms_ssim_score)
+        self.log["val_loss"].append(dr_avg_loss)
+        self.log["val_PSNR"].append(dr_psnr_score)
+        self.log["val_MS_SSIM"].append(dr_ms_ssim_score)
+
+        self.gc_log["val_loss"].append(gc_avg_loss)
+        self.gc_log["val_PSNR"].append(gc_psnr_score)
+        self.gc_log["val_MS_SSIM"].append(gc_ms_ssim_score)
 
         end = time.time()
 
         print(
-            f"Validation Summary [{end-start:.3f}s]: \n Avg GC Loss: {avg_gc_loss:.4f} | Avg DR Loss: {avg_dr_loss:.4f} | MS-SSIM: {ms_ssim_score:.4f} | PSNR: {psnr_score:.4f} | lr: {lr}"
+            f"Validation Summary [{end-start:.3f}s]: \n Total Avg Loss: {avg_loss:.4f} | GC Avg Loss: {gc_avg_loss:.4f} | GC MS-SSIM: {gc_ms_ssim_score:.4f} | GC PSNR: {gc_psnr_score:.4f} | DR Avg Loss: {dr_avg_loss:.4f} | DR MS-SSIM: {dr_ms_ssim_score:.4f} | DR PSNR: {dr_psnr_score:.4f} | lr: {lr}"
         )
 
         return end - start
@@ -452,10 +529,10 @@ class GCDRTrainer(BaseTrainer):
             print("----> DRNet checkpoint found and loaded! <-----")
 
         print("-----Start Training!-----")
-        early_stopper = EarlyStoppingMultiModel(patience=5, min_delt=0.001)
+        early_stopper = EarlyStoppingMultiModel(patience=5, min_delta=0.001)
 
         for epoch in range(self.epochs):
-            print(f"Epoch {len(self.log)+1}\n-------------------------------")
+            print(f"Epoch {epoch+1}\n-------------------------------")
             train_time = self._train_epoch(train_loader)
             val_time = self._eval_epoch(val_loader)
 
@@ -476,7 +553,10 @@ class GCDRTrainer(BaseTrainer):
                 self.scheduler.step()
 
             if early_stopper.early_stop(
-                self.log["val_loss"][-1], self.model, self.gcnet, epoch + 1
+                self.log["val_loss"][-1] + self.gc_log["val_loss"][-1],
+                self.model,
+                self.gcnet,
+                epoch + 1,
             ):
                 print("Early Stopped!")
                 break
@@ -497,6 +577,10 @@ class GCDRTrainer(BaseTrainer):
             # Save logs
             pd.DataFrame(self.log).to_csv(
                 f"{LOGS_PATH}/{self.model.name}.csv", index=False
+            )
+            # Save GCNet logs
+            pd.DataFrame(self.gc_log).to_csv(
+                f"{LOGS_PATH}/{self.gcnet.name}.csv", index=False
             )
             print("Logs saved!")
 

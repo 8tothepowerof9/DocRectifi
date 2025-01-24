@@ -45,5 +45,5 @@ if __name__ == "__main__":
         config=config,
     )
 
-    trainer.fit(train_loader, val_loader, min_lr=1e-6)
+    trainer.fit(train_loader, val_loader)
     # print(model)

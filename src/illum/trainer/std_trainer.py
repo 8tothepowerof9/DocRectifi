@@ -22,6 +22,7 @@ class StandardTrainer(BaseTrainer):
             step_size=config["train"]["scheduler"]["step_size"],
             gamma=config["train"]["scheduler"]["gamma"],
         )
+        self.min_lr = config["train"]["scheduler"]["min_lr"]
         self.checkpoint_exists = self.load_checkpoint()
 
     def _train_epoch(self, dataloader):
@@ -121,7 +122,7 @@ class StandardTrainer(BaseTrainer):
 
         return end - start
 
-    def fit(self, train_loader, val_loader, min_lr=1e-6):
+    def fit(self, train_loader, val_loader):
         if self.checkpoint_exists:
             print("----> Checkpoint found and loaded! <-----")
 
@@ -129,7 +130,7 @@ class StandardTrainer(BaseTrainer):
         early_stopper = EarlyStopping(patience=3, min_delta=0.001)
 
         for epoch in range(self.epochs):
-            print(f"Epoch {len(self.log)+1}\n-------------------------------")
+            print(f"Epoch {epoch+1}\n-------------------------------")
             train_time = self._train_epoch(train_loader)
             val_time = self._eval_epoch(val_loader)
 
@@ -146,7 +147,7 @@ class StandardTrainer(BaseTrainer):
             lr = self.optimizer.param_groups[0]["lr"]
 
             # lr cap
-            if lr > min_lr:
+            if lr > self.min_lr:
                 self.scheduler.step()
 
             if early_stopper.early_stop(

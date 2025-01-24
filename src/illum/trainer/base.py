@@ -51,10 +51,10 @@ class BaseTrainer(ABC):
     def load_checkpoint(self):
         # Find if checkpoint exists, if so, load and return True, else return False
         checkpoint_path = f"{CHECKPOINTS_PATH}/{self.config['model']['name']}.pt"
-        log_path = f"{LOGS_PATH}/{self.config['model']['name']}.json"
+        log_path = f"{LOGS_PATH}/{self.config['model']['name']}.csv"
 
         if os.path.exists(log_path):
-            self.log = pd.read_csv(log_path)
+            self.log = pd.read_csv(log_path).to_dict()
 
         if os.path.exists(checkpoint_path):
             self.model.load_state_dict(torch.load(checkpoint_path, weights_only=True))

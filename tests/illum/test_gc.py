@@ -102,8 +102,6 @@ if __name__ == "__main__":
 
     # Get model
     model = GCNet(config).to("cuda")
-    # Load with weights
-    # model.load_state_dict(torch.load("checkpoints/illum/gcnet.pt", weights_only=True))
 
     trainer = GCTrainer(
         model=model,

@@ -237,7 +237,7 @@ class DRNet(BaseModel):
         embed_dims = cfg["model"]["dr"]["embed_dims"]
 
         self.encoder1 = nn.Sequential(
-            nn.ReflectionPad2d(1), nn.Conv2d(3, 32, 3, stride=1, padding=0)
+            nn.ReflectionPad2d(1), nn.Conv2d(6, 32, 3, stride=1, padding=0)
         )
         self.encoder2 = nn.Sequential(
             nn.ReflectionPad2d(1), nn.Conv2d(32, 64, 3, stride=1, padding=0)
