@@ -6,13 +6,14 @@
     "train": {
         "trainer": "gc",
         "epochs": 50,
-        "lr": 0.001,
-        "save": true,
+        "lr": 0.00001,
+        "save": false,
         "betas": [0.9, 0.999],
         "scheduler": {
+            "type": "LinearLR",
             "step_size": 10,
             "gamma": 0.5,
-            "min_lr": 1e-6
+            "min_lr": 1e-10
         }
     }, 
     "model": {

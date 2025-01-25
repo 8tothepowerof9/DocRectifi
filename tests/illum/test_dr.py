@@ -8,7 +8,7 @@ import json
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../src")))
 from illum.dataset import RealDAE
-from illum.model import DRNet
+from illum.model import DRNet, GCNet
 from illum.trainer import GCDRTrainer
 
 
@@ -29,9 +29,10 @@ def read_cfg(file_path):
 
 
 # TODO: Modify later
-def vis_preds(model, dataloader):
+def vis_preds(dr, gc, dataloader):
     # Visualize multiple instances
-    model.eval()
+    dr.eval()
+    gc.eval()
 
     with torch.no_grad():
         for inputs, gts in dataloader:
@@ -43,36 +44,32 @@ def vis_preds(model, dataloader):
             if num_images == 1:
                 axes = axes.reshape(1, -1)
 
+            in_img, gt_img = inputs.to("cuda"), gts.to("cuda")
+            shadow_map = torch.clamp(in_img / (gt_img + 1e-6), 0, 1)
+            pred_shadow_map = gc(in_img)
+
+            i_gc = torch.clamp(in_img / pred_shadow_map, 0, 1)
+            dr_input = torch.cat((in_img, i_gc), dim=1)
+
+            _, _, _, out1 = dr(dr_input)
+
+            # Plot input, ground truth, i_gc, and final output
+
             for i in range(num_images):
-                pred_shadowmap = model(inputs[i].unsqueeze(0).to("cuda"))
-                i_gc = torch.clamp(
-                    inputs[i].unsqueeze(0).to("cuda") / pred_shadowmap, 0, 1
-                )
-
-                # Convert back to HWC format for visualization
-                inp_img = inputs[i].permute(1, 2, 0).numpy()
-                gt_img = gts[i].permute(1, 2, 0).numpy()
-                pred_shadowmap = pred_shadowmap.squeeze().permute(1, 2, 0).cpu().numpy()
-                i_gc = i_gc.squeeze().permute(1, 2, 0).cpu().numpy()
-
-                # Input Image
-                axes[i, 0].imshow(inp_img)
-                axes[i, 0].set_title("Input Image")
+                axes[i, 0].imshow(in_img[i].cpu().permute(1, 2, 0))
+                axes[i, 0].set_title("Input")
                 axes[i, 0].axis("off")
 
-                # Ground Truth Image
-                axes[i, 1].imshow(gt_img)
-                axes[i, 1].set_title("Ground Truth Image")
+                axes[i, 1].imshow(gt_img[i].cpu().permute(1, 2, 0))
+                axes[i, 1].set_title("Ground Truth")
                 axes[i, 1].axis("off")
 
-                # Predicted Shadowmap
-                axes[i, 2].imshow(pred_shadowmap)
-                axes[i, 2].set_title("Predicted Shadowmap")
+                axes[i, 2].imshow(i_gc[i].cpu().permute(1, 2, 0))
+                axes[i, 2].set_title("I_GC")
                 axes[i, 2].axis("off")
 
-                # Predicted Illumination
-                axes[i, 3].imshow(i_gc)
-                axes[i, 3].set_title("Predicted Illumination")
+                axes[i, 3].imshow(out1[i].cpu().permute(1, 2, 0))
+                axes[i, 3].set_title("Output")
                 axes[i, 3].axis("off")
 
             plt.tight_layout()
@@ -102,15 +99,14 @@ if __name__ == "__main__":
     )
 
     # Get model
-    model = DRNet(config).to("cuda")
+    dr = DRNet(config).to("cuda")
+    gc = GCNet(config).to("cuda")
 
     trainer = GCDRTrainer(
-        model=model,
+        model=dr,
         config=config,
     )
 
-    # print(model)
-
     trainer.fit(train_loader, val_loader)
 
-    # vis_preds(model, train_loader)
+    vis_preds(dr, gc, train_loader)

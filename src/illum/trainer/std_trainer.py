@@ -17,11 +17,23 @@ class StandardTrainer(BaseTrainer):
         )
         self.epochs = self.config["train"]["epochs"]
         self.save = self.config["train"]["save"]
-        self.scheduler = optim.lr_scheduler.StepLR(
-            self.optimizer,
-            step_size=config["train"]["scheduler"]["step_size"],
-            gamma=config["train"]["scheduler"]["gamma"],
-        )
+
+        if config["train"]["scheduler"]["type"] == "StepLR":
+            self.scheduler = optim.lr_scheduler.StepLR(
+                self.optimizer,
+                step_size=config["train"]["scheduler"]["step_size"],
+                gamma=config["train"]["scheduler"]["gamma"],
+            )
+        elif config["train"]["scheduler"]["type"] == "LinearLR":
+            self.scheduler = optim.lr_scheduler.LinearLR(
+                self.optimizer,
+                start_factor=1.0,
+                end_factor=0.0,
+                total_iters=self.epochs,
+            )
+        else:
+            raise ValueError("Scheduler type not recognized")
+
         self.min_lr = config["train"]["scheduler"]["min_lr"]
         self.checkpoint_exists = self.load_checkpoint()
 

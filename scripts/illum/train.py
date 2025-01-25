@@ -46,4 +46,3 @@ if __name__ == "__main__":
     )
 
     trainer.fit(train_loader, val_loader)
-    # print(model)

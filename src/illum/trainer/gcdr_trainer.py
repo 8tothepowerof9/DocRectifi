@@ -28,11 +28,23 @@ class GCTrainer(BaseTrainer):
         )
         self.epochs = self.config["train"]["epochs"]
         self.save = self.config["train"]["save"]
-        self.scheduler = optim.lr_scheduler.StepLR(
-            self.optimizer,
-            step_size=config["train"]["scheduler"]["step_size"],
-            gamma=config["train"]["scheduler"]["gamma"],
-        )
+
+        if config["train"]["scheduler"]["type"] == "StepLR":
+            self.scheduler = optim.lr_scheduler.StepLR(
+                self.optimizer,
+                step_size=config["train"]["scheduler"]["step_size"],
+                gamma=config["train"]["scheduler"]["gamma"],
+            )
+        elif config["train"]["scheduler"]["type"] == "LinearLR":
+            self.scheduler = optim.lr_scheduler.LinearLR(
+                self.optimizer,
+                start_factor=1.0,
+                end_factor=0.0,
+                total_iters=self.epochs,
+            )
+        else:
+            raise ValueError("Scheduler type not recognized")
+
         self.min_lr = config["train"]["scheduler"]["min_lr"]
         self.checkpoint_exists = self.load_checkpoint()
 
@@ -204,6 +216,7 @@ class GCTrainer(BaseTrainer):
         print("-----Done Training!-----")
 
 
+# TODO: Refer back to paper. Currently have major error
 class GCDRTrainer(BaseTrainer):
     def __init__(self, model, config):
         # The model stored here is DRNet
@@ -233,11 +246,22 @@ class GCDRTrainer(BaseTrainer):
 
         self.epochs = self.config["train"]["epochs"]
         self.save = self.config["train"]["save"]
-        self.scheduler = optim.lr_scheduler.StepLR(
-            self.optimizer,
-            step_size=config["train"]["scheduler"]["step_size"],
-            gamma=config["train"]["scheduler"]["gamma"],
-        )
+
+        if config["train"]["scheduler"]["type"] == "StepLR":
+            self.scheduler = optim.lr_scheduler.StepLR(
+                self.optimizer,
+                step_size=config["train"]["scheduler"]["step_size"],
+                gamma=config["train"]["scheduler"]["gamma"],
+            )
+        elif config["train"]["scheduler"]["type"] == "LinearLR":
+            self.scheduler = optim.lr_scheduler.LinearLR(
+                self.optimizer,
+                start_factor=1.0,
+                end_factor=0.0,
+                total_iters=self.epochs,
+            )
+        else:
+            raise ValueError("Scheduler type not recognized")
 
         # Independent log and metrics for GCNet
         self.gc_log = {
@@ -254,6 +278,8 @@ class GCDRTrainer(BaseTrainer):
             "PSNR": PSNR().to(device="cuda"),
             "MS_SSIM": MS_SSIM().to(device="cuda"),
         }
+
+        self.min_lr = config["train"]["scheduler"]["min_lr"]
 
     def load_checkpoint(self):
         # Find if dr checkpoint exists, if so, load and return True, else return False
@@ -561,7 +587,7 @@ class GCDRTrainer(BaseTrainer):
                 print("Early Stopped!")
                 break
 
-        if self.save():
+        if self.save:
             torch.save(
                 early_stopper.best_model_1_state,
                 f"{CHECKPOINTS_PATH}/{self.model.name}.pt",
