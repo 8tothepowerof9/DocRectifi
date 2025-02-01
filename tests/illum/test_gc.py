@@ -83,14 +83,14 @@ if __name__ == "__main__":
     cfg_file = sys.argv[1]
     config = read_cfg(cfg_file)
 
-    train_ds = RealDAE(split="train")
-    train_loader = DataLoader(
-        train_ds,
-        batch_size=config["data"]["batch_size"],
-        shuffle=True,
-        num_workers=config["data"]["num_workers"],
-        pin_memory=True,
-    )
+    # train_ds = RealDAE(split="train")
+    # train_loader = DataLoader(
+    #     train_ds,
+    #     batch_size=config["data"]["batch_size"],
+    #     shuffle=True,
+    #     num_workers=config["data"]["num_workers"],
+    #     pin_memory=True,
+    # )
     val_ds = RealDAE(split="val")
     val_loader = DataLoader(
         val_ds,
@@ -117,4 +117,4 @@ if __name__ == "__main__":
 
     # trainer.fit(train_loader, val_loader)
 
-    vis_preds(model, train_loader)
+    vis_preds(model, val_loader)

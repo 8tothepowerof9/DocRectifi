@@ -6,7 +6,6 @@ from torchmetrics.image import (
     PeakSignalNoiseRatio as PSNR,
     MultiScaleStructuralSimilarityIndexMeasure as MS_SSIM,
     StructuralSimilarityIndexMeasure as SSIM,
-    TotalVariation as TV,
 )
 import os
 import pandas as pd
@@ -14,6 +13,7 @@ from .base import BaseTrainer
 from ..utils import EarlyStopping, EarlyStoppingMultiModel, seconds_to_minutes_str
 from ..config import CHECKPOINTS_PATH, LOGS_PATH
 from ..model import GCNet
+from ..loss import TVLoss, VGGLoss
 
 
 # GCNet trainer is similar to the StandardTrainer, but it uses the shadow map as the ground truth
@@ -216,7 +216,6 @@ class GCTrainer(BaseTrainer):
         print("-----Done Training!-----")
 
 
-# TODO: Refer back to paper. Currently have major error
 class GCDRTrainer(BaseTrainer):
     def __init__(self, model, config):
         # The model stored here is DRNet
@@ -225,19 +224,20 @@ class GCDRTrainer(BaseTrainer):
         # Different lambda values for the loss function
         self.lambda_1 = 0.1
         self.lambda_2 = 0.002
+        self.lambda_3 = 0.0001
 
         # l8 uses L1 loss only
         # l2 and l4 has the same loss function: SSIM loss + L1 loss
         # l1 uses L1 loss + SSIM loss + Total Variation loss
         self.l1_loss = nn.L1Loss()
         self.ssim_loss = SSIM().to("cuda")  # For now use the default values
-        self.tv_loss = TV(reduction="mean").to("cuda")  # Maybe use mean instead of sum?
+        self.tv_loss = TVLoss(p=1)
+        self.vgg_loss = VGGLoss().to("cuda")
 
         # Attempt to load GCNet
         self.load_gcnet()
         self.load_checkpoint()
 
-        # TODO: Consider using 2 different optimizers
         self.optimizer = optim.Adam(
             list(self.model.parameters()) + list(self.gcnet.parameters()),
             lr=config["train"]["lr"],
@@ -386,10 +386,12 @@ class GCDRTrainer(BaseTrainer):
             l2 = self.l1_loss(out2, gt2) + self.lambda_1 * (
                 1 - self.ssim_loss(out2, gt2)
             )
+            gt1_act = self.vgg_loss.get_features(gt1)
             l1 = (
                 self.l1_loss(out1, gt1)
                 + self.lambda_1 * (1 - self.ssim_loss(out1, gt1))
                 + self.lambda_2 * self.tv_loss(out1)
+                + self.lambda_3 * self.vgg_loss(out1, gt1_act, target_is_features=True)
             )
             dr_loss = l8 + l4 + l2 + l1
             dr_total_loss += dr_loss.item()
@@ -509,10 +511,13 @@ class GCDRTrainer(BaseTrainer):
                 l2 = self.l1_loss(out2, gt2) + self.lambda_1 * (
                     1 - self.ssim_loss(out2, gt2)
                 )
+                gt1_act = self.vgg_loss.get_features(gt1)
                 l1 = (
                     self.l1_loss(out1, gt1)
                     + self.lambda_1 * (1 - self.ssim_loss(out1, gt1))
                     + self.lambda_2 * self.tv_loss(out1)
+                    + self.lambda_3
+                    * self.vgg_loss(out1, gt1_act, target_is_features=True)
                 )
 
                 dr_loss = l8 + l4 + l2 + l1
@@ -555,7 +560,7 @@ class GCDRTrainer(BaseTrainer):
             print("----> DRNet checkpoint found and loaded! <-----")
 
         print("-----Start Training!-----")
-        early_stopper = EarlyStoppingMultiModel(patience=5, min_delta=0.001)
+        early_stopper = EarlyStoppingMultiModel(patience=5, min_delta=0.01)
 
         for epoch in range(self.epochs):
             print(f"Epoch {epoch+1}\n-------------------------------")

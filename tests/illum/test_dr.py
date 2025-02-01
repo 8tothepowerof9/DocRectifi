@@ -28,7 +28,6 @@ def read_cfg(file_path):
         sys.exit(1)
 
 
-# TODO: Modify later
 def vis_preds(dr, gc, dataloader):
     # Visualize multiple instances
     dr.eval()
@@ -45,8 +44,8 @@ def vis_preds(dr, gc, dataloader):
                 axes = axes.reshape(1, -1)
 
             in_img, gt_img = inputs.to("cuda"), gts.to("cuda")
-            shadow_map = torch.clamp(in_img / (gt_img + 1e-6), 0, 1)
             pred_shadow_map = gc(in_img)
+            pred_shadow_map = pred_shadow_map.detach()
 
             i_gc = torch.clamp(in_img / pred_shadow_map, 0, 1)
             dr_input = torch.cat((in_img, i_gc), dim=1)

@@ -5,13 +5,15 @@
     }, 
     "train": {
         "trainer": "gcdr",
-        "epochs": 5,
-        "lr": 0.0001,
+        "epochs": 3,
+        "lr": 0.001,
         "save": false,
         "betas": [0.5, 0.999],
         "scheduler": {
-            "type": "LinearLR",
-            "min_lr": 1e-08
+            "type": "StepLR",
+            "step_size": 10,
+            "gamma": 0.5,
+            "min_lr": 1e-10
         }
     }, 
     "model": {
