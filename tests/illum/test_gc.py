@@ -1,13 +1,12 @@
 import matplotlib.pyplot as plt
 import torch
-from torch import optim
 from torch.utils.data import DataLoader
 import sys
 import os
 import json
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../src")))
-from illum.dataset import RealDAE
+from illum.dataset import RealDAE, FullResBatchSampler
 from illum.model import GCNet
 from illum.trainer import GCTrainer
 
@@ -36,7 +35,7 @@ def vis_preds(model, dataloader):
         for inputs, gts in dataloader:
             # num_images = len(inputs)
             num_images = 2
-            fig, axes = plt.subplots(num_images, 4, figsize=(15, 5 * num_images))
+            _, axes = plt.subplots(num_images, 4, figsize=(15, 5 * num_images))
 
             # Ensure axes is a 2D array even if num_images == 1
             if num_images == 1:
@@ -84,20 +83,28 @@ if __name__ == "__main__":
     config = read_cfg(cfg_file)
 
     # train_ds = RealDAE(split="train")
+    val_ds = RealDAE(split="val")
+
+    # Batch sampler
+    # train_sampler = FullResBatchSampler(
+    #     config["data"]["batch_size"], train_ds.imgs_size_idx, shuffle=True
+    # )
+    val_sampler = FullResBatchSampler(
+        config["data"]["batch_size"], val_ds.imgs_size_idx, shuffle=False
+    )
+
     # train_loader = DataLoader(
     #     train_ds,
-    #     batch_size=config["data"]["batch_size"],
-    #     shuffle=True,
     #     num_workers=config["data"]["num_workers"],
     #     pin_memory=True,
+    #     batch_sampler=train_sampler,
     # )
-    val_ds = RealDAE(split="val")
+
     val_loader = DataLoader(
         val_ds,
-        batch_size=config["data"]["batch_size"],
-        shuffle=False,
         num_workers=config["data"]["num_workers"],
         pin_memory=True,
+        batch_sampler=val_sampler,
     )
 
     # Get model

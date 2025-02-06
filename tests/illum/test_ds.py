@@ -5,15 +5,14 @@ import sys
 import os
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../src")))
-from illum.dataset import RealDAE
+from illum.dataset import RealDAE, FullResBatchSampler
 
 if __name__ == "__main__":
     split = "train"
 
     dataset = RealDAE(split=split)
-    dataloader = DataLoader(dataset, batch_size=4, shuffle=False)
-
-    print(len(dataloader))
+    sampler = FullResBatchSampler(4, dataset.imgs_size_idx, shuffle=True)
+    dataloader = DataLoader(dataset, batch_sampler=sampler, num_workers=4)
 
     def visualize_samples(batch):
         inputs, gts = batch
@@ -39,12 +38,11 @@ if __name__ == "__main__":
     def plot_shadow_map(batch):
         inputs, gts = batch
 
-        fig, axes = plt.subplots(len(inputs), 4, figsize=(10, 10))
+        _, axes = plt.subplots(len(inputs), 4, figsize=(10, 10))
 
         for i in range(len(inputs)):
             # Compute shadowmap by dividing input by ground truth
-            shadow_map = inputs[i] / gts[i]
-            # Don't clamp shadow map
+            shadow_map = inputs[i] / gts[i]  # May show clamp warnings from matplotlib
 
             i_gc = torch.clamp(inputs[i] / shadow_map, 0, 1)
 
@@ -74,9 +72,10 @@ if __name__ == "__main__":
         plt.show()
 
     # Get a batch of samples and visualize
-    for batch in dataloader:
-        # print(batch[0])
-        # print(batch[1])
+    for idx, batch in enumerate(dataloader):
+        print(batch[0].dtype)
+        print(batch[1].dtype)
         # visualize_samples(batch)
-        plot_shadow_map(batch)
-        break  # Only visualize one batch
+        # plot_shadow_map(batch)
+        # break  # Only visualize one batch
+        continue

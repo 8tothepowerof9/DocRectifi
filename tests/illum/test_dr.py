@@ -7,7 +7,7 @@ import os
 import json
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../src")))
-from illum.dataset import RealDAE
+from illum.dataset import RealDAE, FullResBatchSampler
 from illum.model import DRNet, GCNet
 from illum.trainer import GCDRTrainer
 
@@ -81,25 +81,32 @@ if __name__ == "__main__":
     config = read_cfg(cfg_file)
 
     train_ds = RealDAE(split="train")
-    train_loader = DataLoader(
-        train_ds,
-        batch_size=config["data"]["batch_size"],
-        shuffle=True,
-        num_workers=config["data"]["num_workers"],
-        pin_memory=True,
-    )
     val_ds = RealDAE(split="val")
-    val_loader = DataLoader(
-        val_ds,
-        batch_size=config["data"]["batch_size"],
-        shuffle=False,
-        num_workers=config["data"]["num_workers"],
-        pin_memory=True,
+
+    # Batch sampler
+    train_sampler = FullResBatchSampler(
+        config["data"]["batch_size"], train_ds.imgs_size_idx, shuffle=True
+    )
+    val_sampler = FullResBatchSampler(
+        config["data"]["batch_size"], val_ds.imgs_size_idx, shuffle=False
     )
 
+    train_loader = DataLoader(
+        train_ds,
+        num_workers=config["data"]["num_workers"],
+        pin_memory=True,
+        batch_sampler=train_sampler,
+    )
+
+    val_loader = DataLoader(
+        val_ds,
+        num_workers=config["data"]["num_workers"],
+        pin_memory=True,
+        batch_sampler=val_sampler,
+    )
     # Get model
     dr = DRNet(config).to("cuda")
-    gc = GCNet(config).to("cuda")
+    # gc = GCNet(config).to("cuda")
 
     trainer = GCDRTrainer(
         model=dr,
@@ -108,4 +115,4 @@ if __name__ == "__main__":
 
     trainer.fit(train_loader, val_loader)
 
-    vis_preds(dr, gc, train_loader)
+    # vis_preds(dr, gc, train_loader)

@@ -1,7 +1,9 @@
 import os
 import re
-import torch
+import copy
+import random
 from torch.utils.data import Dataset
+from torch.utils.data import Sampler
 import albumentations as A
 import cv2
 from sklearn.model_selection import train_test_split
@@ -10,13 +12,10 @@ from .config import *
 
 class RealDAE(Dataset):
     """
-    A PyTorch Dataset class for loading paired image data from a directory structure.
-    This dataset is designed to handle image pairs for tasks such as denoising, inpainting,
-    or any application requiring input (in) and ground truth (gt) images.
-
     The dataset expects the directory to be organized such that files corresponding to the
     'train' or 'val' split are stored in appropriate subdirectories, with images following
     a naming convention that ends with 'in.jpg' for input images and 'gt.jpg' for ground truth images.
+    Some transformations can't be used or else it will through an error during training. For example, RandomRotate90.
 
     Attributes:
     -----------
@@ -24,19 +23,14 @@ class RealDAE(Dataset):
         Sorted list of file paths to input images.
     gt_paths : list of str
         Sorted list of file paths to ground truth images.
-    transform : callable, optional
-        A function/transform to apply to the images (both input and ground truth).
-        Only works with albumentations transforms.
 
     Parameters:
     -----------
     split : str
         The dataset split to load ('train' or 'val').
-    transform : callable, optional
-        An optional transformation function to apply to both input and ground truth images.
     """
 
-    def __init__(self, split, transform=None):
+    def __init__(self, split):
         in_paths = []
         gt_paths = []
 
@@ -65,26 +59,37 @@ class RealDAE(Dataset):
             self.in_paths = val_in_paths
             self.gt_paths = val_gt_paths
 
-        if not transform:
-            if split == "train":
-                transform = self.__get_train_trans__()
-            elif split == "val":
-                transform = self.__get_val_trans__()
+        # Organize images by size
+        imgs_size_idx = {}
+        for idx, path in enumerate(self.in_paths):
+            # Get image w and h
+            w, h = cv2.imread(path).shape[:2]
+            size = (w, h)
+            if size not in imgs_size_idx:
+                imgs_size_idx[size] = [idx]
+            else:
+                imgs_size_idx[size].append(idx)
 
+        if split == "train":
+            transform = self.__get_train_trans__()
+        elif split == "val":
+            transform = self.__get_val_trans__()
+
+        self.imgs_size_idx = imgs_size_idx
         self.transform = transform
 
     def __get_train_trans__(self):
-        return A.Compose(
-            [
-                A.RandomRotate90(),
-                A.HorizontalFlip(),
-                A.VerticalFlip(),
-                A.Resize(IMG_H, IMG_W),
-            ]
-        )
+        transforms = [
+            A.HorizontalFlip(),
+            A.VerticalFlip(),
+        ]
+
+        return A.Compose(transforms)
 
     def __get_val_trans__(self):
-        return A.Compose([A.Resize(IMG_H, IMG_W)])
+        transforms = []
+
+        return A.Compose(transforms)
 
     def __len__(self):
         return len(self.in_paths)
@@ -97,13 +102,49 @@ class RealDAE(Dataset):
         gt_img = cv2.imread(gt_path)
 
         if self.transform:
-            augmented = self.transform(image=in_img, mask=gt_img)
-            in_img = augmented["image"]
-            gt_img = augmented["mask"]
+            transformed = self.transform(image=in_img, mask=gt_img)
+            in_img = transformed["image"]
+            gt_img = transformed["mask"]
 
-        in_img = in_img.astype("float32") / 255.0
+        # Reduce mem
+        in_img = in_img.astype("float16") / 255.0
         in_img = in_img.transpose(2, 0, 1)
-        gt_img = gt_img.astype("float32") / 255.0
+        gt_img = gt_img.astype("float16") / 255.0
         gt_img = gt_img.transpose(2, 0, 1)
 
         return in_img, gt_img
+
+
+class FullResBatchSampler(Sampler):
+    """
+    Custom batch sampler that samples batches of images at full resolution.
+    This sampler shuffles indices and drops last batch.
+
+    """
+
+    def __init__(self, batch_size, imgs_size_idx, shuffle=True):
+        self.batch_size = batch_size
+        self.imgs_size_idx = imgs_size_idx
+        self.shuffle = shuffle
+
+    def __iter__(self):
+        imgsz_idxs = copy.deepcopy(self.imgs_size_idx)
+
+        batches = []
+        for size in imgsz_idxs:
+            while len(imgsz_idxs[size]) >= self.batch_size:  # drop last
+                batch_idxs = []
+                for _ in range(self.batch_size):
+                    idx = imgsz_idxs[size].pop()
+                    batch_idxs.append(idx)
+                batches.append(batch_idxs)
+        if self.shuffle:
+            random.shuffle(batches)
+
+        return iter(batches)
+
+    def __len__(self):
+        batches_per_resolution = [
+            len(idxs) // self.batch_size for idxs in self.imgs_size_idx.values()
+        ]
+        return int(sum(batches_per_resolution))

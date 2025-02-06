@@ -1,7 +1,7 @@
 {
     "data": {
         "batch_size": 4,
-        "num_workers": 6
+        "num_workers": 4
     }, 
     "train": {
         "trainer": "gc",

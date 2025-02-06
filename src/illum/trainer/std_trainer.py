@@ -1,12 +1,21 @@
 import time
 import torch
 from torch import nn, optim
+import torch.nn.functional as F
 import pandas as pd
 from .base import BaseTrainer
 from ..utils import EarlyStopping, seconds_to_minutes_str
+from ..config import *
 
 
 class StandardTrainer(BaseTrainer):
+    """
+    The standard trainer is used to train models with simple training loops.
+    For example, training a model with a single loss function and a single optimizer.
+    For more complicated training loops, a custom Trainer class should be implmeneted by subclassing BaseTrainer.
+    This class use the L1 loss function and Adam optimizer, and resize the input and target images to IMG_HxIMG_W.
+    """
+
     def __init__(self, model, config):
         super().__init__(model, config)
         self.loss_fn = nn.L1Loss()
@@ -53,6 +62,11 @@ class StandardTrainer(BaseTrainer):
 
         for batch, (in_img, gt_img) in enumerate(dataloader):
             in_img, gt_img = in_img.to("cuda"), gt_img.to("cuda")
+
+            # Resize to IMG_HxIMG_W
+            in_img = F.interpolate(in_img, (IMG_H, IMG_W), mode="bilinear")
+            gt_img = F.interpolate(gt_img, (IMG_H, IMG_W), mode="bilinear")
+
             pred_gt = self.model(in_img)
 
             loss = self.loss_fn(pred_gt, gt_img)
@@ -107,6 +121,11 @@ class StandardTrainer(BaseTrainer):
         with torch.no_grad():
             for in_img, gt_img in dataloader:
                 in_img, gt_img = in_img.to("cuda"), gt_img.to("cuda")
+
+                # Resize to IMG_HxIMG_W
+                in_img = F.interpolate(in_img, (IMG_H, IMG_W), mode="bilinear")
+                gt_img = F.interpolate(gt_img, (IMG_H, IMG_W), mode="bilinear")
+
                 pred_gt = self.model(in_img)
 
                 loss = self.loss_fn(pred_gt, gt_img)

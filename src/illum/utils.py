@@ -1,3 +1,7 @@
+import cv2
+import torch
+
+
 class EarlyStopping:
     def __init__(self, patience=1, min_delta=0):
         self.patience = patience
@@ -46,3 +50,25 @@ class EarlyStoppingMultiModel:
 
 def seconds_to_minutes_str(seconds):
     return f"{seconds//60}m {(seconds%60):3f}s"
+
+
+def pad_to_stride(img, stride=2):
+    """Pads an image tensor so its height and width are multiples of stride."""
+    h, w = img.shape[-2:]  # Assuming shape is (C, H, W) or (B, C, H, W)
+
+    padding_h = (stride - h % stride) % stride
+    padding_w = (stride - w % stride) % stride
+
+    # Pad at the bottom and right
+    img = torch.nn.functional.pad(img, (0, padding_w, 0, padding_h), mode="replicate")
+
+    return img, padding_h, padding_w
+
+
+def remove_padding(img: torch.Tensor, padding_h: int, padding_w: int):
+    """Removes the added padding from an image tensor."""
+    if padding_h > 0:
+        img = img[..., :-padding_h, :]  # Remove rows from bottom
+    if padding_w > 0:
+        img = img[..., :, :-padding_w]  # Remove columns from right
+    return img
