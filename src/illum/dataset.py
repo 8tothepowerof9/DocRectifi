@@ -2,8 +2,7 @@ import os
 import re
 import copy
 import random
-from torch.utils.data import Dataset
-from torch.utils.data import Sampler
+from torch.utils.data import Dataset, Sampler
 import albumentations as A
 import cv2
 from sklearn.model_selection import train_test_split
@@ -70,6 +69,8 @@ class RealDAE(Dataset):
             else:
                 imgs_size_idx[size].append(idx)
 
+        transform = None
+
         if split == "train":
             transform = self.__get_train_trans__()
         elif split == "val":
@@ -106,10 +107,9 @@ class RealDAE(Dataset):
             in_img = transformed["image"]
             gt_img = transformed["mask"]
 
-        # Reduce mem
-        in_img = in_img.astype("float16") / 255.0
+        in_img = in_img.astype("float32") / 255.0
         in_img = in_img.transpose(2, 0, 1)
-        gt_img = gt_img.astype("float16") / 255.0
+        gt_img = gt_img.astype("float32") / 255.0
         gt_img = gt_img.transpose(2, 0, 1)
 
         return in_img, gt_img

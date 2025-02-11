@@ -5,8 +5,8 @@ import torch.nn.functional as F
 from torch.amp import autocast, GradScaler
 from torchmetrics.image import (
     PeakSignalNoiseRatio as PSNR,
-    MultiScaleStructuralSimilarityIndexMeasure as MS_SSIM,
     StructuralSimilarityIndexMeasure as SSIM,
+    MultiScaleStructuralSimilarityIndexMeasure as MS_SSIM,
 )
 import os
 import pandas as pd
@@ -241,10 +241,6 @@ class GCTrainer(BaseTrainer):
 
 
 class GCDRTrainer(BaseTrainer):
-    """
-    TODO: Save gradscaler and add documentation
-    """
-
     def __init__(self, model, config):
         # The model stored here is DRNet
         super().__init__(model, config)
@@ -309,24 +305,7 @@ class GCDRTrainer(BaseTrainer):
         else:
             raise ValueError("Scheduler type not recognized")
 
-        # Independent log and metrics for GCNet
-        self.gc_log = {
-            "loss": [],
-            "val_loss": [],
-            "PSNR": [],
-            "MS_SSIM": [],
-            "val_PSNR": [],
-            "val_MS_SSIM": [],
-            "lr": [],
-        }
-
-        self.gc_metrics = {
-            "PSNR": PSNR().to(device="cuda"),
-            "MS_SSIM": MS_SSIM().to(device="cuda"),
-        }
-
         self.min_lr = config["train"]["scheduler"]["min_lr"]
-        self.scaler = GradScaler(device="cuda")
 
     def load_checkpoint(self):
         # Find if dr checkpoint exists, if so, load and return True, else return False
@@ -345,8 +324,7 @@ class GCDRTrainer(BaseTrainer):
 
     def load_gcnet(self):
         self.gcnet = GCNet(self.config).to("cuda")
-        checkpoint_path = f"{CHECKPOINTS_PATH}/{self.config["model"]["gc"]["name"]}.pt"
-        log_path = f"{LOGS_PATH}/{self.config['model']['gc']['name']}.csv"
+        checkpoint_path = f"{CHECKPOINTS_PATH}/{self.config['model']['gc']['name']}.pt"
 
         # Check if path exists
         if not os.path.exists(checkpoint_path):
@@ -355,15 +333,14 @@ class GCDRTrainer(BaseTrainer):
         else:
             self.gcnet.load_state_dict(torch.load(checkpoint_path, weights_only=True))
 
-            if os.path.exists(log_path):
-                self.gc_log = pd.read_csv(log_path).to_dict(orient="list")
-
     def _train_epoch(self, dataloader):
         start = time.time()
         size = len(dataloader.dataset)
         num_batches = len(dataloader)
-        gc_total_loss = 0
         dr_total_loss = 0
+
+        # Mixed precision gradient scaler
+        scaler = GradScaler()
 
         # Metrics
         dr_psnr = self.metrics["PSNR"]
@@ -371,55 +348,55 @@ class GCDRTrainer(BaseTrainer):
         dr_psnr.reset()
         dr_ms_ssim.reset()
 
-        gc_psnr = self.gc_metrics["PSNR"]
-        gc_ms_ssim = self.gc_metrics["MS_SSIM"]
-        gc_psnr.reset()
-        gc_ms_ssim.reset()
-
         self.model.train()
         self.gcnet.train()
+
+        accumulation_steps = 8
 
         for batch, (in_img, gt_img) in enumerate(dataloader):
             in_img, gt_img = in_img.to("cuda"), gt_img.to("cuda")
             _, _, h, w = in_img.shape  # Original size
 
             # For source image with resolutions < 512, resize the short side to 512 while maintaining the aspect ratio
+            # short_side = min(h, w)
+            # if short_side < 512:
+            #     scale = 512 / short_side
+            #     h = int(h * scale)
+            #     w = int(w * scale)
+            #     in_img = F.interpolate(
+            #         in_img, (h, w), mode="bilinear", align_corners=False
+            #     )
+            #     gt_img = F.interpolate(
+            #         gt_img, (h, w), mode="bilinear", align_corners=False
+            #     )
+
+            # Resize short side of all images to 512 while maintaining aspect ratio
             short_side = min(h, w)
-            if short_side < 512:
-                scale = 512 / short_side
-                h = int(h * scale)
-                w = int(w * scale)
-                in_img = F.interpolate(
-                    in_img, (h, w), mode="bilinear", align_corners=False
-                )
-                gt_img = F.interpolate(
-                    gt_img, (h, w), mode="bilinear", align_corners=False
-                )
+            scale = 512 / short_side
+            h = int(h * scale)
+            w = int(w * scale)
+            in_img = F.interpolate(in_img, (h, w), mode="bilinear", align_corners=False)
+            gt_img = F.interpolate(gt_img, (h, w), mode="bilinear", align_corners=False)
 
-            # Zero gradients for the combined optimizer
-            self.gc_optimizer.zero_grad()
-            self.dr_optimizer.zero_grad()
-
-            # Joint training
+            ## Mixed Precision Training
             with autocast(device_type="cuda", dtype=torch.float16):
                 ## Train GCNet
                 shadow_map = torch.clamp(in_img / (gt_img + 1e-6), 0, 1)
                 in_img_down = F.interpolate(in_img, (IMG_H, IMG_W), mode="bilinear")
                 pred_shadow_map = self.gcnet(in_img_down)
 
-                ### Upscale the shadow map to the original size
+                # Upscale the shadow map to the original size
                 pred_shadow_map = F.interpolate(
                     pred_shadow_map, size=(h, w), mode="bilinear"
                 )
-
                 gc_loss = self.l1_loss(pred_shadow_map, shadow_map)
-                gc_total_loss += gc_loss.item()
+                gc_loss = gc_loss / accumulation_steps
 
-                ### Gradient of the DR-Net will not propagate back to the GC-Net
+                # Gradient of the DR-Net will not propagate back to the GC-Net
                 pred_shadow_map = pred_shadow_map.detach()
                 i_gc = torch.clamp(in_img / pred_shadow_map, 0, 1)
 
-                ### TODO: Add padding to ensure the size is divisible by 32 for DRNet
+                # Ensure the size is divisible by 32 for DRNet
                 in_img, padding_h, padding_w = pad_to_stride(in_img, stride=32)
                 i_gc, _, _ = pad_to_stride(i_gc, stride=32)
                 gt_img, _, _ = pad_to_stride(gt_img, stride=32)
@@ -429,7 +406,7 @@ class GCDRTrainer(BaseTrainer):
                 ## Train DRNet
                 out8, out4, out2, out1 = self.model(dr_input)
 
-                ### TODO: Remove padding from the outputs and gt_img
+                # Remove padding from outputs and ground truth
                 out8, out4, out2, out1, gt_img = (
                     remove_padding(out8, padding_h, padding_w),
                     remove_padding(out4, padding_h, padding_w),
@@ -438,7 +415,7 @@ class GCDRTrainer(BaseTrainer):
                     remove_padding(gt_img, padding_h, padding_w),
                 )
 
-                ### Resize gt to match the output sizes
+                # Resize ground truth to match outputs
                 gt8, gt4, gt2, gt1 = (
                     F.interpolate(
                         gt_img,
@@ -461,8 +438,7 @@ class GCDRTrainer(BaseTrainer):
                     gt_img,
                 )
 
-                ### Multiscale losses
-
+                ## Multiscale losses
                 l8 = self.l1_loss(out8, gt8)
                 l4 = self.l1_loss(out4, gt4) + self.lambda_1 * (
                     1 - self.ssim_loss(out4, gt4)
@@ -470,47 +446,48 @@ class GCDRTrainer(BaseTrainer):
                 l2 = self.l1_loss(out2, gt2) + self.lambda_1 * (
                     1 - self.ssim_loss(out2, gt2)
                 )
-                # gt1_act = self.vgg_loss.get_features(gt1)
                 l1 = (
                     self.l1_loss(out1, gt1)
                     + self.lambda_1 * (1 - self.ssim_loss(out1, gt1))
                     + self.lambda_2 * self.tv_loss(out1)
-                    # + self.lambda_3
-                    # * self.vgg_loss(out1, gt1_act, target_is_features=True)
                 )
+
                 dr_loss = l8 + l4 + l2 + l1
-                dr_total_loss += dr_loss.item()
+                dr_loss = dr_loss / accumulation_steps
 
-            ### Backpropation with AMP
-            self.scaler.scale(gc_loss).backward()
-            self.scaler.step(self.gc_optimizer)
-            self.scaler.scale(dr_loss).backward()
-            self.scaler.step(self.dr_optimizer)
-            self.scaler.update()  # Update gradscaler
+            ## Backpropagation with Mixed Precision
+            scaler.scale(gc_loss).backward()
+            scaler.scale(dr_loss).backward()
 
-            ### Update metrics
-            gc_ms_ssim(pred_shadow_map, shadow_map)
-            gc_psnr(pred_shadow_map, shadow_map)
+            if (batch + 1) % accumulation_steps == 0:
+                # Step the optimizers with scaled gradients
+                scaler.step(self.gc_optimizer)
+                scaler.step(self.dr_optimizer)
+
+                # Update the scaler
+                scaler.update()
+
+                # Zero gradients for the combined optimizer
+                self.gc_optimizer.zero_grad()
+                self.dr_optimizer.zero_grad()
+
+            # Track total loss
+            dr_total_loss += dr_loss.detach().item()
+
+            ## Update metrics
             dr_ms_ssim(out1, gt1)
             dr_psnr(out1, gt1)
 
             # Logging
-            if batch % 50 == 0:
-                loss, gc_loss, dr_loss, current = (
-                    gc_loss.item() + dr_loss.item(),
-                    gc_loss.item(),
-                    dr_loss.item(),
-                    batch * len(in_img),
-                )
-                print(
-                    f"loss: {loss:>4f} | gc_loss: {gc_loss:>4f} | dr_loss: {dr_loss:>4f} [{current:>5d}/{size:>5d}]"
-                )
+            if batch % 100 == 0:
+                with torch.no_grad():
+                    dr_loss_val = dr_loss.detach().item()
+                    current = batch * len(in_img)
+
+                    print(f"loss: {dr_loss_val:.4f} [{current:>5d}/{size:>5d}]")
 
         lr = self.dr_optimizer.param_groups[0]["lr"]
-        gc_avg_loss = gc_total_loss / num_batches
         dr_avg_loss = dr_total_loss / num_batches
-        gc_ms_ssim_score = gc_ms_ssim.compute().item()
-        gc_psnr_score = gc_psnr.compute().item()
         dr_ms_ssim_score = dr_ms_ssim.compute().item()
         dr_psnr_score = dr_psnr.compute().item()
 
@@ -520,14 +497,8 @@ class GCDRTrainer(BaseTrainer):
         self.log["MS_SSIM"].append(dr_ms_ssim_score)
         self.log["lr"].append(lr)
 
-        self.gc_log["loss"].append(gc_avg_loss)
-        self.gc_log["PSNR"].append(gc_psnr_score)
-        self.gc_log["MS_SSIM"].append(gc_ms_ssim_score)
-        self.gc_log["lr"].append(lr)
-
         end = time.time()
 
-        # Summary displayed is of DRNet
         print(
             f"Train Summary [{end-start:.3f}s]: \n Avg Loss: {dr_avg_loss:.4f} | MS-SSIM: {dr_ms_ssim_score:.4f} | PSNR: {dr_psnr_score:.4f} | lr: {lr}"
         )
@@ -537,7 +508,6 @@ class GCDRTrainer(BaseTrainer):
     def _eval_epoch(self, dataloader):
         start = time.time()
         num_batches = len(dataloader)
-        gc_total_loss = 0
         dr_total_loss = 0
 
         # Metrics
@@ -545,11 +515,6 @@ class GCDRTrainer(BaseTrainer):
         dr_ms_ssim = self.metrics["MS_SSIM"]
         dr_psnr.reset()
         dr_ms_ssim.reset()
-
-        gc_psnr = self.gc_metrics["PSNR"]
-        gc_ms_ssim = self.gc_metrics["MS_SSIM"]
-        gc_psnr.reset()
-        gc_ms_ssim.reset()
 
         self.model.eval()
         self.gcnet.eval()
@@ -559,40 +524,46 @@ class GCDRTrainer(BaseTrainer):
                 in_img, gt_img = in_img.to("cuda"), gt_img.to("cuda")
                 _, _, h, w = in_img.shape  # Original size
 
-                # resize the short side to 512 while maintaining the aspect ratio
-                short_side = min(h, w)
-                if short_side < 512:
-                    scale = 512 / short_side
-                    h = int(h * scale)
-                    w = int(w * scale)
-                    in_img = F.interpolate(
-                        in_img, (h, w), mode="bilinear", align_corners=False
-                    )
-                    gt_img = F.interpolate(
-                        gt_img, (h, w), mode="bilinear", align_corners=False
-                    )
+                # Resize the short side to 512 while maintaining the aspect ratio
+                # short_side = min(h, w)
+                # if short_side < 512:
+                #     scale = 512 / short_side
+                #     h = int(h * scale)
+                #     w = int(w * scale)
+                #     in_img = F.interpolate(
+                #         in_img, (h, w), mode="bilinear", align_corners=False
+                #     )
+                #     gt_img = F.interpolate(
+                #         gt_img, (h, w), mode="bilinear", align_corners=False
+                #     )
 
+                short_side = min(h, w)
+                scale = 512 / short_side
+                h = int(h * scale)
+                w = int(w * scale)
+                in_img = F.interpolate(
+                    in_img, (h, w), mode="bilinear", align_corners=False
+                )
+                gt_img = F.interpolate(
+                    gt_img, (h, w), mode="bilinear", align_corners=False
+                )
+
+                # Mixed Precision Inference
                 with autocast(device_type="cuda", dtype=torch.float16):
                     # GCNet
-                    with torch.no_grad():
-                        shadow_map = torch.clamp(in_img / (gt_img + 1e-6), 0, 1)
-                        in_img_down = F.interpolate(
-                            in_img, (IMG_H, IMG_W), mode="bilinear"
-                        )
+                    in_img_down = F.interpolate(in_img, (IMG_H, IMG_W), mode="bilinear")
                     pred_shadow_map = self.gcnet(in_img_down)
 
                     ## Upscale the shadow map to the original size
                     pred_shadow_map = F.interpolate(
                         pred_shadow_map, size=(h, w), mode="bilinear"
                     )
-                    gc_loss = self.l1_loss(pred_shadow_map, shadow_map)
-                    gc_total_loss += gc_loss.item()
 
-                    pred_shadow_map = pred_shadow_map.detach()
                     i_gc = torch.clamp(in_img / pred_shadow_map, 0, 1)
                     in_img, padding_h, padding_w = pad_to_stride(in_img, stride=32)
                     i_gc, _, _ = pad_to_stride(i_gc, stride=32)
                     gt_img, _, _ = pad_to_stride(gt_img, stride=32)
+
                     dr_input = torch.cat((in_img, i_gc), dim=1)
 
                     # DRNet
@@ -636,29 +607,23 @@ class GCDRTrainer(BaseTrainer):
                     l2 = self.l1_loss(out2, gt2) + self.lambda_1 * (
                         1 - self.ssim_loss(out2, gt2)
                     )
-                    # gt1_act = self.vgg_loss.get_features(gt1)
                     l1 = (
                         self.l1_loss(out1, gt1)
                         + self.lambda_1 * (1 - self.ssim_loss(out1, gt1))
                         + self.lambda_2 * self.tv_loss(out1)
-                        # + self.lambda_3
-                        # * self.vgg_loss(out1, gt1_act, target_is_features=True)
                     )
 
                     dr_loss = l8 + l4 + l2 + l1
-                    dr_total_loss += dr_loss.item()
+
+                # Store total loss
+                dr_total_loss += dr_loss.item()
 
                 # Update metrics
-                gc_ms_ssim(pred_shadow_map, shadow_map)
-                gc_psnr(pred_shadow_map, shadow_map)
                 dr_ms_ssim(out1, gt1)
                 dr_psnr(out1, gt1)
 
         lr = self.dr_optimizer.param_groups[0]["lr"]
-        gc_avg_loss = gc_total_loss / num_batches
         dr_avg_loss = dr_total_loss / num_batches
-        gc_ms_ssim_score = gc_ms_ssim.compute().item()
-        gc_psnr_score = gc_psnr.compute().item()
         dr_ms_ssim_score = dr_ms_ssim.compute().item()
         dr_psnr_score = dr_psnr.compute().item()
 
@@ -667,19 +632,18 @@ class GCDRTrainer(BaseTrainer):
         self.log["val_PSNR"].append(dr_psnr_score)
         self.log["val_MS_SSIM"].append(dr_ms_ssim_score)
 
-        self.gc_log["val_loss"].append(gc_avg_loss)
-        self.gc_log["val_PSNR"].append(gc_psnr_score)
-        self.gc_log["val_MS_SSIM"].append(gc_ms_ssim_score)
-
         end = time.time()
 
         print(
-            f"Train Summary [{end-start:.3f}s]: \n Avg Loss: {dr_avg_loss:.4f} | MS-SSIM: {dr_ms_ssim_score:.4f} | PSNR: {dr_psnr_score:.4f} | lr: {lr}"
+            f"Eval Summary [{end-start:.3f}s]: \n Avg Loss: {dr_avg_loss:.4f} | MS-SSIM: {dr_ms_ssim_score:.4f} | PSNR: {dr_psnr_score:.4f} | lr: {lr}\n"
         )
 
         return end - start
 
     def fit(self, train_loader, val_loader):
+        # Clear memory
+        torch.cuda.empty_cache()
+
         if self.dr_checkpoint_exists:
             print("----> DRNet checkpoint found and loaded! <-----")
 
@@ -688,17 +652,8 @@ class GCDRTrainer(BaseTrainer):
 
         for epoch in range(self.epochs):
             print(f"Epoch {epoch+1}\n-------------------------------")
-            train_time = self._train_epoch(train_loader)
-            val_time = self._eval_epoch(val_loader)
-
-            if epoch > 0:
-                print(
-                    "\n[Approximate time remaining]: ",
-                    seconds_to_minutes_str(
-                        (train_time + val_time) * (self.epochs - epoch - 1)
-                    ),
-                    "\n",
-                )
+            _ = self._train_epoch(train_loader)
+            _ = self._eval_epoch(val_loader)
 
             # Get lr
             lr = self.dr_optimizer.param_groups[0]["lr"]
@@ -709,7 +664,7 @@ class GCDRTrainer(BaseTrainer):
                 self.dr_scheduler.step()
 
             if early_stopper.early_stop(
-                self.log["val_loss"][-1] + self.gc_log["val_loss"][-1],
+                self.log["val_loss"][-1],
                 self.model,
                 self.gcnet,
                 epoch + 1,

@@ -5,9 +5,9 @@
     },
     "train": {
         "trainer": "gcdr",
-        "epochs": 1,
+        "epochs": 20,
         "lr": 0.0001,
-        "save": true,
+        "save": false,
         "betas": [
             0.5,
             0.999

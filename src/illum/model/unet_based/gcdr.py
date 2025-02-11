@@ -224,8 +224,6 @@ class GCNet(BaseModel):
         return str(summary(self, input_size=(1, 3, IMG_H, IMG_W), verbose=0))
 
 
-# TODO: Train GCNet first then co-train with DR-Net
-# Add the GCNet into DRNet
 class DRNet(BaseModel):
     def __init__(self, cfg):
         super().__init__()

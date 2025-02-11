@@ -94,14 +94,12 @@ if __name__ == "__main__":
     train_loader = DataLoader(
         train_ds,
         num_workers=config["data"]["num_workers"],
-        pin_memory=True,
         batch_sampler=train_sampler,
     )
 
     val_loader = DataLoader(
         val_ds,
         num_workers=config["data"]["num_workers"],
-        pin_memory=True,
         batch_sampler=val_sampler,
     )
     # Get model
