@@ -7,7 +7,7 @@
         "trainer": "gcdr",
         "epochs": 20,
         "lr": 0.0001,
-        "save": false,
+        "save": true,
         "betas": [
             0.5,
             0.999

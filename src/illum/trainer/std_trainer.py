@@ -54,9 +54,9 @@ class StandardTrainer(BaseTrainer):
 
         # Metrics
         psnr = self.metrics["PSNR"]
-        ms_ssim = self.metrics["MS_SSIM"]
+        ssim = self.metrics["SSIM"]
         psnr.reset()
-        ms_ssim.reset()
+        ssim.reset()
 
         self.model.train()
 
@@ -78,7 +78,7 @@ class StandardTrainer(BaseTrainer):
             self.optimizer.step()
 
             # Update metrics
-            ms_ssim(pred_gt, gt_img)
+            ssim(pred_gt, gt_img)
             psnr(pred_gt, gt_img)
 
             # Logging
@@ -87,20 +87,20 @@ class StandardTrainer(BaseTrainer):
                 print(f"loss: {loss:>7f}  [{current:>5d}/{size:>5d}]")
 
         avg_loss = total_loss / num_batches
-        ms_ssim_score = ms_ssim.compute().item()
+        ssim_score = ssim.compute().item()
         psnr_score = psnr.compute().item()
 
         # Save metrics
         lr = self.optimizer.param_groups[0]["lr"]
         self.log["loss"].append(avg_loss)
         self.log["PSNR"].append(psnr_score)
-        self.log["MS_SSIM"].append(ms_ssim_score)
+        self.log["SSIM"].append(ssim_score)
         self.log["lr"].append(lr)
 
         end = time.time()
 
         print(
-            f"Train Summary [{end-start:.3f}s]: \n Avg Loss: {avg_loss:.4f} | MS-SSIM: {ms_ssim_score:.4f} | PSNR: {psnr_score:.4f} | lr: {lr}"
+            f"Train Summary [{end-start:.3f}s]: \n Avg Loss: {avg_loss:.4f} | SSIM: {ssim_score:.4f} | PSNR: {psnr_score:.4f} | lr: {lr}"
         )
 
         return end - start
@@ -112,9 +112,9 @@ class StandardTrainer(BaseTrainer):
 
         # Metrics
         psnr = self.metrics["PSNR"]
-        ms_ssim = self.metrics["MS_SSIM"]
+        ssim = self.metrics["SSIM"]
         psnr.reset()
-        ms_ssim.reset()
+        ssim.reset()
 
         self.model.eval()
 
@@ -132,23 +132,23 @@ class StandardTrainer(BaseTrainer):
                 total_loss += loss.item()
 
                 # Update metrics
-                ms_ssim(pred_gt, gt_img)
+                ssim(pred_gt, gt_img)
                 psnr(pred_gt, gt_img)
 
         avg_loss = total_loss / num_batches
-        ms_ssim_score = ms_ssim.compute().item()
+        ssim_score = ssim.compute().item()
         psnr_score = psnr.compute().item()
 
         # Save to log
         lr = self.optimizer.param_groups[0]["lr"]
         self.log["val_loss"].append(avg_loss)
         self.log["val_PSNR"].append(psnr_score)
-        self.log["val_MS_SSIM"].append(ms_ssim_score)
+        self.log["val_SSIM"].append(ssim_score)
 
         end = time.time()
 
         print(
-            f"Validation Summary [{end-start:.3f}s]: \n Avg Loss: {avg_loss:.4f} | MS-SSIM: {ms_ssim_score:.4f} | PSNR: {psnr_score:.4f} | lr: {lr}"
+            f"Validation Summary [{end-start:.3f}s]: \n Avg Loss: {avg_loss:.4f} | MS-SSIM: {ssim_score:.4f} | PSNR: {psnr_score:.4f} | lr: {lr}"
         )
 
         return end - start

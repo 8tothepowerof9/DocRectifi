@@ -2,11 +2,13 @@ import os
 import re
 import copy
 import random
+import numpy as np
 from torch.utils.data import Dataset, Sampler
 import albumentations as A
 import cv2
 from sklearn.model_selection import train_test_split
 from .config import *
+from .utils import pad_to_stride
 
 
 class RealDAE(Dataset):
@@ -27,9 +29,11 @@ class RealDAE(Dataset):
     -----------
     split : str
         The dataset split to load ('train' or 'val').
+    min_mem_usage : bool
+        This is a special parameter that is used to reduce memory usage during training for GCDRNet.
     """
 
-    def __init__(self, split):
+    def __init__(self, split, min_mem_usage=False):
         in_paths = []
         gt_paths = []
 
@@ -45,6 +49,7 @@ class RealDAE(Dataset):
 
         self.in_paths = sorted(in_paths)
         self.gt_paths = sorted(gt_paths)
+        self.min_mem_usage = min_mem_usage
 
         # Split the dataset into train and val
         train_in_paths, val_in_paths, train_gt_paths, val_gt_paths = train_test_split(
@@ -99,20 +104,74 @@ class RealDAE(Dataset):
         in_path = self.in_paths[idx]
         gt_path = self.gt_paths[idx]
 
-        in_img = cv2.imread(in_path)
-        gt_img = cv2.imread(gt_path)
+        in_img = cv2.imread(in_path).astype("float32") / 255.0
+        gt_img = cv2.imread(gt_path).astype("float32") / 255.0
 
         if self.transform:
             transformed = self.transform(image=in_img, mask=gt_img)
             in_img = transformed["image"]
             gt_img = transformed["mask"]
 
-        in_img = in_img.astype("float32") / 255.0
-        in_img = in_img.transpose(2, 0, 1)
-        gt_img = gt_img.astype("float32") / 255.0
-        gt_img = gt_img.transpose(2, 0, 1)
+        if not self.min_mem_usage:
+            in_img = in_img.transpose(2, 0, 1)
+            gt_img = gt_img.transpose(2, 0, 1)
 
-        return in_img, gt_img
+            return in_img, gt_img
+
+        h, w, _ = in_img.shape
+        short_side = min(h, w)
+        if short_side < 512:
+            scale = 512 / short_side
+            h = int(h * scale)
+            w = int(w * scale)
+            in_img = cv2.resize(in_img, (w, h), interpolation=cv2.INTER_LINEAR)
+            gt_img = cv2.resize(gt_img, (w, h), interpolation=cv2.INTER_LINEAR)
+
+        # If longside > 2000, resize the long side to 1800 while keeping the aspect ratio
+        long_side = max(h, w)
+        if long_side > 2000:
+            scale = 1800 / long_side
+            h = int(h * scale)
+            w = int(w * scale)
+            in_img = cv2.resize(in_img, (w, h), interpolation=cv2.INTER_LINEAR)
+            gt_img = cv2.resize(gt_img, (w, h), interpolation=cv2.INTER_LINEAR)
+
+        in_img, padding_h, padding_w = pad_to_stride(in_img, stride=32)
+        gt_img, _, _ = pad_to_stride(gt_img, stride=32)
+
+        in_img_down = cv2.resize(in_img, (512, 512), interpolation=cv2.INTER_LINEAR)
+        shadow_map = np.clip(in_img / (gt_img + 1e-6), 0, 1)
+
+        gt8 = cv2.resize(
+            gt_img,
+            (gt_img.shape[1] // 8, gt_img.shape[0] // 8),
+            interpolation=cv2.INTER_LINEAR,
+        )
+        gt4 = cv2.resize(
+            gt_img,
+            (gt_img.shape[1] // 4, gt_img.shape[0] // 4),
+            interpolation=cv2.INTER_LINEAR,
+        )
+        gt2 = cv2.resize(
+            gt_img,
+            (gt_img.shape[1] // 2, gt_img.shape[0] // 2),
+            interpolation=cv2.INTER_LINEAR,
+        )
+
+        # Transpose to (C, H, W)
+        in_img = in_img.transpose(2, 0, 1)
+        gt_img = gt_img.transpose(2, 0, 1)
+        in_img_down = in_img_down.transpose(2, 0, 1)
+        shadow_map = shadow_map.transpose(2, 0, 1)
+        gt8 = gt8.transpose(2, 0, 1)
+        gt4 = gt4.transpose(2, 0, 1)
+        gt2 = gt2.transpose(2, 0, 1)
+
+        return (
+            (in_img, gt_img, padding_h, padding_w),
+            (in_img_down, shadow_map),
+            (gt8, gt4, gt2),
+        )
 
 
 class FullResBatchSampler(Sampler):

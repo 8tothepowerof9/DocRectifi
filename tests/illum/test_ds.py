@@ -7,12 +7,12 @@ import os
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../src")))
 from illum.dataset import RealDAE, FullResBatchSampler
-from illum.utils import pad_to_stride
+from illum.utils import pad_to_stride, remove_padding
 
 if __name__ == "__main__":
-    split = "train"
+    split = "val"
 
-    dataset = RealDAE(split=split)
+    dataset = RealDAE(split=split, min_mem_usage=True)
     sampler = FullResBatchSampler(1, dataset.imgs_size_idx, shuffle=True)
     dataloader = DataLoader(dataset, batch_sampler=sampler, num_workers=4)
 
@@ -82,25 +82,61 @@ if __name__ == "__main__":
     #     # break  # Only visualize one batch
     #     continue
 
-    for idx, (in_img, gt_img) in enumerate(dataloader):
-        # Print original shape
-        print("Original shape: ")
-        print(in_img.shape, gt_img.shape)
-        _, _, h, w = in_img.shape
+    for batch, (padded, gc, dr) in enumerate(dataloader):
+        in_img, gt_img, padding_h, padding_w = padded
+        in_img_down, shadow_map = gc
+        gt8, gt4, gt2 = dr
 
-        print("Shape after resizing short side to 512 while keeping the aspect ratio: ")
-        short_side = min(h, w)
-        if short_side < 512:
-            scale = 512 / short_side
-            h = int(h * scale)
-            w = int(w * scale)
-            in_img = F.interpolate(in_img, (h, w), mode="bilinear", align_corners=False)
-            gt_img = F.interpolate(gt_img, (h, w), mode="bilinear", align_corners=False)
-        print(in_img.shape, gt_img.shape)
+        # Print shapes
+        print("Input shape:", in_img.shape)
+        print("Ground truth shape:", gt_img.shape)
 
-        print("Shape after ensuring divisible by 32: ")
-        in_img, padding_h, padding_w = pad_to_stride(in_img, stride=32)
-        gt_img, _, _ = pad_to_stride(gt_img, stride=32)
+        print("Input down shape:", in_img_down.shape)
+        print("Shadow map shape:", shadow_map.shape)
 
-        print(in_img.shape, gt_img.shape)
-        print()
+        print("GT8 shape:", gt8.shape)
+        print("GT4 shape:", gt4.shape)
+        print("GT2 shape:", gt2.shape)
+
+        # Plot in_img and gt_img
+        plt.figure(figsize=(10, 5))
+        plt.subplot(1, 2, 1)
+        plt.imshow(in_img[0].permute(1, 2, 0).numpy())
+        plt.title("Padded Image")
+        plt.axis("off")
+        plt.subplot(1, 2, 2)
+        plt.imshow(gt_img[0].permute(1, 2, 0).numpy())
+        plt.title("Ground Truth Image")
+        plt.axis("off")
+        plt.show()
+
+        break
+
+    # for idx, (in_img, gt_img) in enumerate(dataloader):
+    #     # Pad to stride 32
+    #     new_in, padding_h, padding_w = pad_to_stride(in_img, stride=32)
+
+    #     # Remove padding
+    #     unpad_img = remove_padding(new_in, padding_h, padding_w)
+
+    #     print("Original shape:", in_img.shape)
+    #     print("Padded shape:", new_in.shape)
+    #     print("Unpadded shape:", unpad_img.shape)
+
+    #     # Plot the padded image and the original image side by side
+    #     plt.figure(figsize=(10, 5))
+    #     plt.subplot(1, 3, 1)
+    #     plt.imshow(new_in[0].permute(1, 2, 0).numpy())
+    #     plt.title("Padded Image")
+    #     plt.axis("off")
+    #     plt.subplot(1, 3, 2)
+    #     plt.imshow(in_img[0].permute(1, 2, 0).numpy())
+    #     plt.title("Original Image")
+    #     plt.axis("off")
+    #     plt.subplot(1, 3, 3)
+    #     plt.imshow(unpad_img[0].permute(1, 2, 0).numpy())
+    #     plt.title("Unpadded Image")
+    #     plt.axis("off")
+    #     plt.show()
+
+    #     break

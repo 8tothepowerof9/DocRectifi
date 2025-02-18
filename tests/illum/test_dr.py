@@ -1,6 +1,6 @@
 import matplotlib.pyplot as plt
 import torch
-from torch import optim
+from torch.nn import functional as F
 from torch.utils.data import DataLoader
 import sys
 import os
@@ -34,19 +34,24 @@ def vis_preds(dr, gc, dataloader):
     gc.eval()
 
     with torch.no_grad():
-        for inputs, gts in dataloader:
-            # num_images = len(inputs)
-            num_images = 2
+        for padded, gc_input, _ in dataloader:
+            num_images = len(padded)
             _, axes = plt.subplots(num_images, 4, figsize=(15, 5 * num_images))
 
             # Ensure axes is a 2D array even if num_images == 1
             if num_images == 1:
                 axes = axes.reshape(1, -1)
 
-            in_img, gt_img = inputs.to("cuda"), gts.to("cuda")
-            pred_shadow_map = gc(in_img)
-            pred_shadow_map = pred_shadow_map.detach()
+            in_img, gt_img, _, _ = padded
+            in_img, gt_img = in_img.to("cuda"), gt_img.to("cuda")  # Padded images
+            in_img_down, _ = gc_input
+            in_img_down = in_img_down.to("cuda")
+            _, _, h, w = gt_img.shape
 
+            pred_shadow_map = gc(in_img_down)
+
+            # Upscale to original size
+            pred_shadow_map = F.interpolate(pred_shadow_map, (h, w), mode="nearest")
             i_gc = torch.clamp(in_img / pred_shadow_map, 0, 1)
             dr_input = torch.cat((in_img, i_gc), dim=1)
 
@@ -80,31 +85,32 @@ if __name__ == "__main__":
     cfg_file = sys.argv[1]
     config = read_cfg(cfg_file)
 
-    train_ds = RealDAE(split="train")
-    val_ds = RealDAE(split="val")
+    train_ds = RealDAE(split="train", min_mem_usage=True)
+    val_ds = RealDAE(split="val", min_mem_usage=True)
 
     # Batch sampler
     train_sampler = FullResBatchSampler(
         config["data"]["batch_size"], train_ds.imgs_size_idx, shuffle=True
     )
     val_sampler = FullResBatchSampler(
-        config["data"]["batch_size"], val_ds.imgs_size_idx, shuffle=False
+        config["data"]["batch_size"], val_ds.imgs_size_idx, shuffle=True
     )
 
     train_loader = DataLoader(
         train_ds,
         num_workers=config["data"]["num_workers"],
         batch_sampler=train_sampler,
+        pin_memory=True,
     )
 
     val_loader = DataLoader(
         val_ds,
         num_workers=config["data"]["num_workers"],
         batch_sampler=val_sampler,
+        pin_memory=True,
     )
     # Get model
     dr = DRNet(config).to("cuda")
-    # gc = GCNet(config).to("cuda")
 
     trainer = GCDRTrainer(
         model=dr,
@@ -113,4 +119,5 @@ if __name__ == "__main__":
 
     trainer.fit(train_loader, val_loader)
 
-    # vis_preds(dr, gc, train_loader)
+    # gc = GCNet(config).to("cuda")
+    # vis_preds(dr, gc, val_loader)

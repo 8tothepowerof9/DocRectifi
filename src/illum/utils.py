@@ -1,4 +1,5 @@
 import torch
+import cv2
 
 
 class EarlyStopping:
@@ -51,17 +52,19 @@ def seconds_to_minutes_str(seconds):
     return f"{seconds//60}m {(seconds%60):3f}s"
 
 
-def pad_to_stride(img, stride=2):
-    """Pads an image tensor so its height and width are multiples of stride."""
-    h, w = img.shape[-2:]  # Assuming shape is (C, H, W) or (B, C, H, W)
+def pad_to_stride(img, stride=32):
+    """Pads a NumPy image array so its height and width are multiples of stride."""
+    h, w = img.shape[:2]  # Assuming shape is (H, W, C)
 
     padding_h = (stride - h % stride) % stride
     padding_w = (stride - w % stride) % stride
 
-    # Pad at the bottom and right
-    img = torch.nn.functional.pad(img, (0, padding_w, 0, padding_h), mode="replicate")
+    # Pad the bottom and right using border replication (similar to PyTorch 'replicate' mode)
+    img_padded = cv2.copyMakeBorder(
+        img, 0, padding_h, 0, padding_w, cv2.BORDER_REPLICATE
+    )
 
-    return img, padding_h, padding_w
+    return img_padded, padding_h, padding_w
 
 
 def remove_padding(img: torch.Tensor, padding_h: int, padding_w: int):

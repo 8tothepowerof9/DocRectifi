@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 from torchmetrics.image import (
     PeakSignalNoiseRatio as PSNR,
-    MultiScaleStructuralSimilarityIndexMeasure as MS_SSIM,
+    StructuralSimilarityIndexMeasure as SSIM,
 )
 import os
 import torch
@@ -24,15 +24,15 @@ class BaseTrainer(ABC):
         self.config = config
         self.metrics = {
             "PSNR": PSNR().to(device="cuda"),
-            "MS_SSIM": MS_SSIM().to(device="cuda"),
+            "SSIM": SSIM().to(device="cuda"),
         }  # For now use default parameters
         self.log = {
             "loss": [],
             "val_loss": [],
             "PSNR": [],
-            "MS_SSIM": [],
+            "SSIM": [],
             "val_PSNR": [],
-            "val_MS_SSIM": [],
+            "val_SSIM": [],
             "lr": [],
         }
 

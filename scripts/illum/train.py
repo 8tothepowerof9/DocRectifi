@@ -15,8 +15,8 @@ if __name__ == "__main__":
     cfg_file = sys.argv[1]
     config = read_cfg(cfg_file)
 
-    train_ds = RealDAE(split="train")
-    val_ds = RealDAE(split="val")
+    train_ds = RealDAE(split="train", min_mem_usage=True)
+    val_ds = RealDAE(split="val", min_mem_usage=True)
 
     # Batch sampler
     train_sampler = FullResBatchSampler(
@@ -49,4 +49,4 @@ if __name__ == "__main__":
         config=config,
     )
 
-    trainer.fit(train_loader, val_loader)
+    trainer.fit(train_loader, train_loader)
