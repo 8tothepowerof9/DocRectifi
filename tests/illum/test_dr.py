@@ -117,7 +117,7 @@ if __name__ == "__main__":
         config=config,
     )
 
-    trainer.fit(train_loader, val_loader)
+    # trainer.fit(train_loader, val_loader)
 
-    # gc = GCNet(config).to("cuda")
-    # vis_preds(dr, gc, val_loader)
+    gc = GCNet(config).to("cuda")
+    vis_preds(dr, gc, val_loader)
