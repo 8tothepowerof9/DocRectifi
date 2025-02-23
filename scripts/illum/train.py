@@ -39,11 +39,13 @@ if __name__ == "__main__":
     )
 
     # Get model
+    # This will create DRNet if load gcdr
     model = MODEL_LIST[config["model"]["type"]](config).to("cuda")
 
     if config["train"]["trainer"] not in TRAINER_LIST.keys():
         raise ValueError("Invalid trainer type")
 
+    # Wil automatically load gcnet from config file
     trainer = TRAINER_LIST[config["train"]["trainer"]](
         model=model,
         config=config,

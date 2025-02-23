@@ -8,7 +8,7 @@ from .config import *
 class Evaluator:
     def __init__(self, cfg):
         self.cfg = cfg
-        self.model = self.__read_model__()
+        self.models = self.__read_model__()
         self.log = self.__read_log__()
 
     def __read_log__(self):
@@ -19,20 +19,43 @@ class Evaluator:
         if self.cfg["model"]["type"] not in MODEL_LIST.keys():
             raise ValueError(f"Model {self.cfg['model']['type']} not supported")
 
-        model = MODEL_LIST[self.cfg["model"]["type"]](self.cfg)
+        models = []
+
+        # If type is gcdr, load both gcnet and drnet
 
         # load weights
-        path = f"{CHECKPOINTS_PATH}/{self.cfg['model']['name']}.pt"
-        model.load_state_dict(torch.load(path, weights_only=True))
-        model.to("cuda")
-        return model
+        if self.cfg["model"]["type"] != "gcdr":
+            model = MODEL_LIST[self.cfg["model"]["type"]](self.cfg)
+            path = f"{CHECKPOINTS_PATH}/{self.cfg['model']['name']}.pt"
+            model.load_state_dict(torch.load(path, weights_only=True))
+            model.to("cuda")
+            models.append(model)
+        else:
+            dr = MODEL_LIST[self.cfg["model"]["type"]](self.cfg)
+            dr_path = f"{CHECKPOINTS_PATH}/{self.cfg['model']['dr']['name']}.pt"
+            dr.load_state_dict(torch.load(dr_path, weights_only=True))
+            dr.to("cuda")
+
+            # Do the same to gcnet
+            gc = MODEL_LIST["gcnet"](self.cfg)
+            gc_path = f"{CHECKPOINTS_PATH}/{self.cfg['model']['gc']['name']}.pt"
+            gc.load_state_dict(torch.load(gc_path, weights_only=True))
+            gc.to("cuda")
+
+            models.append(gc)
+            models.append(dr)
+
+        return models
 
     def vis_preds(self, dataloader):
         # Visualize multiple instances
-        self.model.eval()
+
+        for model in self.models:
+            model.eval()
 
         with torch.no_grad():
-            for inputs, gts in dataloader:
+            for padded, _, _ in dataloader:
+                inputs, gts, _, _ = padded
                 num_images = len(inputs)
                 fig, axes = plt.subplots(num_images, 3, figsize=(15, 5 * num_images))
 
@@ -55,8 +78,12 @@ class Evaluator:
                     axes[i, 1].set_title("Ground Truth Image")
                     axes[i, 1].axis("off")
 
-                    # Predicted Image
-                    pred_img = self.model(inputs[i].unsqueeze(0).to("cuda"))
+                    # Pass the input through pipeline
+                    pred_img = None
+                    for model in self.models:
+                        i = inputs[i].unsqueeze(0).to("cuda")
+                        pred_img = model(i)
+
                     axes[i, 2].imshow(pred_img[0].permute(1, 2, 0).cpu().numpy())
                     axes[i, 2].set_title("Predicted Image")
                     axes[i, 2].axis("off")
@@ -118,6 +145,3 @@ class Evaluator:
             fig.savefig(f"{REPORT_PATH}/history_{self.cfg['model']['name']}.png")
 
         plt.show()
-
-    def eval(self):
-        pass

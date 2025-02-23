@@ -16,11 +16,7 @@ from ..utils import (
 )
 from ..config import *
 from ..model import GCNet
-from ..loss import TVLoss, VGGLoss
-
-
-# TODO: Fix current problem: Training with TVLoss makes the outputs green, without TVLoss the output images are not good (overly bright, text blurred and green)
-# This problem might come from loss accumulation
+from ..loss import TVLoss
 
 
 # GCNet trainer is similar to the StandardTrainer, but it uses the shadow map as the ground truth
