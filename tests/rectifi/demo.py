@@ -14,7 +14,7 @@ if __name__ == "__main__":
     img_path = "tests/rectifi/test.jpg"
 
     model = UVDocnet(num_filter=32, kernel_size=5)
-    checkpoint_path = f"checkpoints/best/uvdocnet.pth"
+    checkpoint_path = f"checkpoints/best/uvdocnet.pkl"
     model.load_state_dict(torch.load(weights_only=True))
     model.to("cuda")
     model.eval()
