@@ -39,10 +39,11 @@ While attempting to train UVDocNet, it was found that the dataset (120k images) 
 Upon testing, it was observed that **GCDRNet performs better when provided with rectified document images**. This behavior is likely due to the dataset used for illumination correction, which primarily consisted of already rectified images.
 
 ## Model Training
-If you want to train model by yourself run the following code: 
+Select specific json file if you want to train model by yourself. For example if you want to train drnet model: 
 ```bash
-python script train.py con
+python scripts/illum/train.py configs/illum/drnet.json
 ```
+The log will be store in `logs/illum/` and the saved model will be stored in `checkpoints/illum`
  
 ## Summary
 - Successfully re-implemented **GCDRNet** from scratch and trained it with resource-efficient modifications.
