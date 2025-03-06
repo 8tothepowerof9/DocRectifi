@@ -38,6 +38,12 @@ While attempting to train UVDocNet, it was found that the dataset (120k images) 
 
 Upon testing, it was observed that **GCDRNet performs better when provided with rectified document images**. This behavior is likely due to the dataset used for illumination correction, which primarily consisted of already rectified images.
 
+## Model Training
+If you want to train model by yourself run the following code: 
+```bash
+python script train.py con
+```
+ 
 ## Summary
 - Successfully re-implemented **GCDRNet** from scratch and trained it with resource-efficient modifications.
 - Used the pre-trained **UVDocNet** model due to dataset size limitations.
