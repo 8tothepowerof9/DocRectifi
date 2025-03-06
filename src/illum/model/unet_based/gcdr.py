@@ -174,8 +174,8 @@ class GCNet(BaseModel):
                 self.dbn1(self.decoder1(out)), scale_factor=(2, 2), mode="bilinear"
             )
         )
-
-        out = torch.add(out, t4)
+        
+        out = torch.add(out, t4)  
         _, _, H, W = out.shape
         out = out.flatten(2).transpose(1, 2)
         for i, blk in enumerate(self.dblock1):

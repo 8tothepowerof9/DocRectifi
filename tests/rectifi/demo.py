@@ -15,7 +15,8 @@ if __name__ == "__main__":
 
     model = UVDocnet(num_filter=32, kernel_size=5)
     checkpoint_path = f"checkpoints/best/uvdocnet.pkl"
-    model.load_state_dict(torch.load(weights_only=True))
+    checkpoint = torch.load(checkpoint_path, weights_only=True)
+    model.load_state_dict(checkpoint["model_state"])
     model.to("cuda")
     model.eval()
 

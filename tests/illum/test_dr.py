@@ -89,19 +89,19 @@ if __name__ == "__main__":
     val_ds = RealDAE(split="val", min_mem_usage=True)
 
     # Batch sampler
-    train_sampler = FullResBatchSampler(
-        config["data"]["batch_size"], train_ds.imgs_size_idx, shuffle=True
-    )
+    # train_sampler = FullResBatchSampler(
+    #     config["data"]["batch_size"], train_ds.imgs_size_idx, shuffle=True
+    # )
     val_sampler = FullResBatchSampler(
         config["data"]["batch_size"], val_ds.imgs_size_idx, shuffle=True
     )
 
-    train_loader = DataLoader(
-        train_ds,
-        num_workers=config["data"]["num_workers"],
-        batch_sampler=train_sampler,
-        pin_memory=True,
-    )
+    # train_loader = DataLoader(
+    #     train_ds,
+    #     num_workers=config["data"]["num_workers"],
+    #     batch_sampler=train_sampler,
+    #     pin_memory=True,
+    # )
 
     val_loader = DataLoader(
         val_ds,
@@ -117,7 +117,7 @@ if __name__ == "__main__":
         config=config,
     )
 
-    # trainer.fit(train_loader, val_loader)
+    #trainer.fit(train_loader, val_loader)
 
     gc = GCNet(config).to("cuda")
     vis_preds(dr, gc, val_loader)
