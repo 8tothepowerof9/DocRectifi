@@ -1,4 +1,5 @@
 # DocRectify
+![image](https://github.com/user-attachments/assets/7519066d-a8ce-490e-9498-4d3c630b7e20)
 
 ## Overview
 DocRectify is a document image processing pipeline that consists of two primary functionalities:
@@ -60,3 +61,8 @@ Upon testing, it was observed that **GCDRNet performs better when provided with 
    ```bash
    streamlit run app.py
    ```
+
+## Demo of App
+![image](https://github.com/user-attachments/assets/6306203b-3f64-4e52-bef9-04ab06b3377b)
+
+Drag and drop an image into this section. The model will then process it and return both the extracted document and the enhanced version. You can download the enhanced image with a button or enlarge it for better visualization.
