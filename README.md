@@ -33,6 +33,11 @@ Since the full training code for GCDRNet was not available, the implementation w
 3. **Training Results**:
    - Achieved an average **PSNR of 22** and **SSIM of 0.91** on the test set.
 
+4. **Limitations**
+   - UVDocnet rectify images based on the alignments of text, so if the text is not aligned correctly in the document, the result might not be as expected
+   - GCDRNet may not always illuminate correctly the colors
+   - The input image should be rectified first (hence I used UVDocnet) to get better result from GCDRNet. This is because GCDRNet is mostly train with images that are already rectified. 
+
 ### UVDocNet Training and Testing
 While attempting to train UVDocNet, it was found that the dataset (120k images) exceeded the computational resources available. As a result, the best pre-trained model provided in the repository was used instead.
 
